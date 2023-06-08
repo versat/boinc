@@ -161,44 +161,15 @@ int CLIENT_STATE::make_scheduler_request(PROJECT* p) {
     global_prefs.write(mf);
     fprintf(f, "</working_global_preferences>\n");
 
-    // send master global preferences if present and not host-specific
+    // send the oldest CPID with email hash
     //
-    if (!global_prefs.host_specific && boinc_file_exists(GLOBAL_PREFS_FILE_NAME)) {
-        FILE* fprefs = fopen(GLOBAL_PREFS_FILE_NAME, "r");
-        if (fprefs) {
-            copy_stream(fprefs, f);
-            fclose(fprefs);
-        }
-        PROJECT* pp = lookup_project(global_prefs.source_project);
-        if (pp && strlen(pp->email_hash)) {
-            fprintf(f,
-                "<global_prefs_source_email_hash>%s</global_prefs_source_email_hash>\n",
-                pp->email_hash
-            );
-        }
+    USER_CPID* ucp = user_cpids.lookup(p->email_hash);
+    if (ucp) {
+        fprintf(f,
+            "<cross_project_id>%s</cross_project_id>\n",
+            ucp->cpid
+        );
     }
-
-    // Of the projects with same email hash as this one,
-    // send the oldest cross-project ID.
-    // Use project URL as tie-breaker.
-    //
-    PROJECT* winner = p;
-    for (i=0; i<projects.size(); i++ ) {
-        PROJECT* project = projects[i];
-        if (project == p) continue;
-        if (strcmp(project->email_hash, p->email_hash)) continue;
-        if (project->cpid_time < winner->cpid_time) {
-            winner = project;
-        } else if (project->cpid_time == winner->cpid_time) {
-            if (strcmp(project->master_url, winner->master_url) < 0) {
-                winner = project;
-            }
-        }
-    }
-    fprintf(f,
-        "<cross_project_id>%s</cross_project_id>\n",
-        winner->cross_project_id
-    );
 
     time_stats.write(mf, true);
     net_stats.write(mf);
@@ -211,7 +182,7 @@ int CLIENT_STATE::make_scheduler_request(PROJECT* p) {
     // update hardware info, and write host info
     //
     host_info.get_host_info(false);
-    set_ncpus();
+    set_n_usable_cpus();
     host_info.write(mf, !cc_config.suppress_net_info, false);
 
     // get and write disk usage
@@ -592,35 +563,33 @@ int CLIENT_STATE::handle_scheduler_reply(
         }
     }
 
-    // check that master URL is correct
+    // compare our URL for this project with the one returned in the reply
+    // (which comes from the project's config.xml).
+    // - if http -> https transition, use the https: one from now on
+    // - if https -> http transition, keep using the https: one
+    // - otherwise notify the user.
     //
     if (strlen(sr.master_url)) {
         canonicalize_master_url(sr.master_url, sizeof(sr.master_url));
-        string url1 = sr.master_url;
-        string url2 = project->master_url;
-        downcase_string(url1);
-        downcase_string(url2);
-        if (url1 != url2) {
-            p2 = lookup_project(sr.master_url);
-            if (p2) {
+        string reply_url = sr.master_url;
+        string current_url = project->master_url;
+        downcase_string(reply_url);
+        downcase_string(current_url);
+        if (reply_url != current_url) {
+            if (is_https_transition(current_url.c_str(), reply_url.c_str())) {
+                strcpy(project->master_url, reply_url.c_str());
+                project->write_account_file();
+                msg_printf(project, MSG_INFO,
+                    "Project URL changed from http:// to https://"
+                );
+            } else if (is_https_transition(reply_url.c_str(), current_url.c_str())) {
+                // project is advertising http://, but https:// works.
+                // keep using https://
+            } else {
                 msg_printf(project, MSG_USER_ALERT,
-                    "You are attached to this project twice.  Please remove projects named %s, then add %s",
-                    project->project_name,
+                    _("This project seems to have changed its URL.  When convenient, remove the project, then add %s"),
                     sr.master_url
                 );
-            } else {
-                if (is_https_transition(url2.c_str(), url1.c_str())) {
-                    strcpy(project->master_url, url1.c_str());
-                    project->write_account_file();
-                    msg_printf(project, MSG_INFO,
-                        "Project URL changed from http:// to https://"
-                    );
-                } else {
-                    msg_printf(project, MSG_USER_ALERT,
-                        _("This project is using an old URL.  When convenient, remove the project, then add %s"),
-                        sr.master_url
-                    );
-                }
             }
         }
     }
@@ -644,6 +613,24 @@ int CLIENT_STATE::handle_scheduler_reply(
         msg_printf(project, MSG_INFO,
             "Consider detaching this project, then trying again"
         );
+    }
+
+    // update user CPID list
+    //
+    if (strlen(project->cross_project_id) && strlen(project->email_hash)) {
+        USER_CPID *ucp = user_cpids.lookup(project->email_hash);
+        if (ucp) {
+            if (project->cpid_time < ucp->time) {
+                strcpy(ucp->cpid, project->cross_project_id);
+                ucp->time = project->cpid_time;
+            }
+        } else {
+            USER_CPID uc;
+            strcpy(uc.email_hash, project->email_hash);
+            strcpy(uc.cpid, project->cross_project_id);
+            uc.time = project->cpid_time;
+            user_cpids.cpids.push_back(uc);
+        }
     }
 
     // show messages from server
@@ -691,7 +678,7 @@ int CLIENT_STATE::handle_scheduler_reply(
         // BAM! currently has mixed http, https; trim off
         char* p = strchr(global_prefs.source_project, '/');
         char* q = strchr(gstate.acct_mgr_info.master_url, '/');
-        if (gstate.acct_mgr_info.using_am() && p && q && !strcmp(p, q)) {
+        if (!global_prefs.override_file_present && gstate.acct_mgr_info.using_am() && p && q && !strcmp(p, q)) {
             if (log_flags.sched_op_debug) {
                 msg_printf(project, MSG_INFO,
                     "[sched_op] ignoring prefs from project; using prefs from AM"

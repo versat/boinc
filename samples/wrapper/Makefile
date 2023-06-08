@@ -11,8 +11,8 @@ ifdef ANDROID
   BOINC_LIB_DIR = $(TCINCLUDES)/lib
   BOINC_ZIP_DIR = $(TCINCLUDES)/lib
 
-  MAKEFILE_LDFLAGS = 
-  MAKEFILE_STDLIB  = 
+  MAKEFILE_LDFLAGS =
+  MAKEFILE_STDLIB  =
 else
   BOINC_API_DIR = $(BOINC_SOURCE_API_DIR)
   BOINC_LIB_DIR = $(BOINC_SOURCE_LIB_DIR)
@@ -43,7 +43,7 @@ libstdc++.a:
 clean: distclean
 
 distclean:
-	rm -f $(PROGS) *.o libstdc++.a
+	rm -f $(PROGS) $(addsuffix .exe, $(PROGS)) *.o libstdc++.a
 
 install: all
 
@@ -57,4 +57,4 @@ REGEXP_OBJS = \
 	regexp_report.o
 
 wrapper: wrapper.o $(MAKEFILE_STDLIB) $(BOINC_LIB_DIR)/libboinc.a $(BOINC_API_DIR)/libboinc_api.a $(REGEXP_OBJS)
-	$(CXX) $(CXXFLAGS) $(CPPFLAGS) $(LDFLAGS) -o wrapper wrapper.o $(REGEXP_OBJS) $(MAKEFILE_LDFLAGS) -lboinc_api -lboinc -lboinc_zip $(STDCPPTC)
+	$(CXX) $(CXXFLAGS) $(CPPFLAGS) $(LDFLAGS) $(MINGW_WRAPPER_FLAGS) -o wrapper wrapper.o $(REGEXP_OBJS) $(MAKEFILE_LDFLAGS) $(MINGW_ZIP_FIX) -lboinc_api -lboinc -lboinc_zip $(MINGW_LIBS) $(STDCPPTC)

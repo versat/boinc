@@ -1,7 +1,7 @@
 /*
  * This file is part of BOINC.
  * http://boinc.berkeley.edu
- * Copyright (C) 2021 University of California
+ * Copyright (C) 2022 University of California
  *
  * BOINC is free software; you can redistribute it and/or modify it
  * under the terms of the GNU Lesser General Public License
@@ -25,13 +25,13 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.os.Bundle
 import android.os.RemoteException
-import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.Window
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
+import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import edu.berkeley.boinc.adapter.TaskRecyclerViewAdapter
 import edu.berkeley.boinc.databinding.DialogConfirmBinding
@@ -39,12 +39,12 @@ import edu.berkeley.boinc.databinding.TasksLayoutBinding
 import edu.berkeley.boinc.rpc.Result
 import edu.berkeley.boinc.rpc.RpcClient
 import edu.berkeley.boinc.utils.*
+import java.util.*
+import kotlin.collections.ArrayList
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.collections.ArrayList
-import java.util.*
 
 class TasksFragment : Fragment() {
     private lateinit var recyclerViewAdapter: TaskRecyclerViewAdapter
@@ -52,7 +52,7 @@ class TasksFragment : Fragment() {
     private var lastFullUpdateTimeStamp: Long = 0
     private val mClientStatusChangeRec: BroadcastReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            Log.d(Logging.TAG, "TasksActivity onReceive")
+            Logging.logVerbose(Logging.Category.GUI_VIEW, "TasksActivity onReceive")
 
             loadData()
         }
@@ -60,7 +60,7 @@ class TasksFragment : Fragment() {
     private val ifcsc = IntentFilter("edu.berkeley.boinc.clientstatuschange")
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
-            Log.d(Logging.TAG, "TasksFragment onCreateView")
+            Logging.logVerbose(Logging.Category.GUI_VIEW, "TasksFragment onCreateView")
 
         // Inflate the layout for this fragment
         val binding = TasksLayoutBinding.inflate(inflater, container, false)
@@ -73,7 +73,7 @@ class TasksFragment : Fragment() {
     override fun onResume() {
         super.onResume()
         //register noisy clientStatusChangeReceiver here, so only active when Activity is visible
-        Log.d(Logging.TAG, "TasksFragment register receiver")
+        Logging.logVerbose(Logging.Category.GUI_VIEW, "TasksFragment register receiver")
 
         requireActivity().registerReceiver(mClientStatusChangeRec, ifcsc)
         loadData()
@@ -81,7 +81,7 @@ class TasksFragment : Fragment() {
 
     override fun onPause() {
         //unregister receiver, so there are not multiple intents flying in
-        Log.d(Logging.TAG, "TasksFragment remove receiver")
+        Logging.logVerbose(Logging.Category.GUI_VIEW, "TasksFragment remove receiver")
 
         requireActivity().unregisterReceiver(mClientStatusChangeRec)
         super.onPause()
@@ -151,7 +151,7 @@ class TasksFragment : Fragment() {
             //check whether this Result is new
             val index = data.indexOfFirst { it.id == rpcResult.name }
             if (index == -1) { // result is new, add
-                Log.d(Logging.TAG, "new result found, id: " + rpcResult.name)
+                Logging.logDebug(Logging.Category.GUI_VIEW, "new result found, id: " + rpcResult.name)
 
                 data.add(TaskData(rpcResult))
             } else { // result was present before, update its data
@@ -166,7 +166,8 @@ class TasksFragment : Fragment() {
     }
 
     inner class TaskData(var result: Result) {
-        var isExpanded = false
+        var sharedPreferences = PreferenceManager.getDefaultSharedPreferences(requireContext())
+        var isExpanded = sharedPreferences.getBoolean("expandWuData", false)
         var id = result.name
         var nextState = -1
         private var loopCounter = 0
@@ -180,19 +181,19 @@ class TasksFragment : Fragment() {
                 return
             }
             if (currentState == nextState) {
-                Log.d(Logging.TAG, "nextState met! $nextState")
+                Logging.logDebug(Logging.Category.GUI_VIEW, "nextState met! $nextState")
 
                 nextState = -1
                 loopCounter = 0
             } else {
                 if (loopCounter < transitionTimeout) {
-                    Log.d(Logging.TAG,
+                    Logging.logDebug(Logging.Category.GUI_VIEW,
                             "nextState not met yet! " + nextState + " vs " + currentState + " loopCounter: " +
                             loopCounter)
 
                     loopCounter++
                 } else {
-                    Log.d(Logging.TAG,
+                    Logging.logDebug(Logging.Category.GUI_VIEW,
                             "transition timed out! " + nextState + " vs " + currentState + " loopCounter: " +
                             loopCounter)
 
@@ -237,12 +238,12 @@ class TasksFragment : Fragment() {
                         dialog.show()
                     }
                     else -> {
-                        Log.e(Logging.TAG, "could not map operation tag")
+                        Logging.logError(Logging.Category.GUI_VIEW, "could not map operation tag")
                     }
                 }
                 recyclerViewAdapter.notifyDataSetChanged() //force list adapter to refresh
             } catch (e: Exception) {
-                Log.e(Logging.TAG, "failed parsing view tag")
+                Logging.logError(Logging.Category.GUI_VIEW, "failed parsing view tag")
             }
         }
 
@@ -270,11 +271,11 @@ class TasksFragment : Fragment() {
     suspend fun performResultOperation(url: String, name: String, operation: Int) = coroutineScope {
         val success = withContext(Dispatchers.Default) {
             try {
-                Log.d(Logging.TAG, "URL: $url, Name: $name, operation: $operation")
+                Logging.logDebug(Logging.Category.GUI_VIEW, "URL: $url, Name: $name, operation: $operation")
 
                 return@withContext BOINCActivity.monitor!!.resultOp(operation, url, name)
             } catch (e: Exception) {
-                Log.e(Logging.TAG, "performResultOperation() error: ", e)
+                Logging.logException(Logging.Category.GUI_VIEW, "performResultOperation() error: ", e)
 
             }
             return@withContext false
@@ -284,10 +285,10 @@ class TasksFragment : Fragment() {
             try {
                 BOINCActivity.monitor!!.forceRefresh()
             } catch (e: RemoteException) {
-                Log.e(Logging.TAG, "performResultOperation() error: ", e)
+                Logging.logException(Logging.Category.GUI_VIEW, "performResultOperation() error: ", e)
             }
         } else {
-            Log.e(Logging.TAG, "performResultOperation() failed.")
+            Logging.logError(Logging.Category.GUI_VIEW, "performResultOperation() failed.")
         }
     }
 }

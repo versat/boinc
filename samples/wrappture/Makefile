@@ -10,14 +10,14 @@ ifdef ANDROID
   BOINC_API_DIR = $(TCINCLUDES)/lib
   BOINC_LIB_DIR = $(TCINCLUDES)/lib
   BOINC_ZIP_DIR = $(TCINCLUDES)/lib
-  MAKEFILE_LDFLAGS = 
-  MAKEFILE_STDLIB  = 
+  MAKEFILE_LDFLAGS =
+  MAKEFILE_STDLIB  =
 else
   BOINC_API_DIR = $(BOINC_SOURCE_API_DIR)
   BOINC_LIB_DIR = $(BOINC_SOURCE_LIB_DIR)
   BOINC_ZIP_DIR = $(BOINC_SOURCE_ZIP_DIR)
   BUILD_DIR     = $(BOINC_DIR)/3rdParty/linux
-  VCPKG_DIR     = $(BUILD_DIR)/vcpkg/installed/x64-linux
+  VCPKG_DIR     ?= $(BUILD_DIR)/vcpkg/installed/x64-linux
   MAKEFILE_LDFLAGS = libstdc++.a -lpthread
   MAKEFILE_STDLIB  = libstdc++.a
 endif
@@ -45,13 +45,13 @@ libstdc++.a:
 clean: distclean
 
 distclean:
-	/bin/rm -f $(PROGS) *.o libstdc++.a
+	/bin/rm -f $(PROGS) $(addsuffix .exe, $(PROGS)) *.o libstdc++.a
 
 wrappture.o: wrappture.cpp
 	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -c -o wrappture.o wrappture.cpp
 
 wrappture_example: wrappture.o wrappture_example.o $(MAKEFILE_STDLIB) $(BOINC_LIB_DIR)/libboinc.a $(BOINC_API_DIR)/libboinc_api.a $(VCPKG_DIR)/lib/librappture.a
-	$(CXX) $(CXXFLAGS) $(CPPFLAGS) $(LDFLAGS) -o wrappture_example wrappture_example.o wrappture.o $(MAKEFILE_LDFLAGS) -lboinc_api -lboinc -lrappture -lexpat -lz
+	$(CXX) $(CXXFLAGS) $(CPPFLAGS) $(LDFLAGS) -o wrappture_example wrappture_example.o wrappture.o -lboinc_api -lboinc -lrappture -lexpat -lz $(MAKEFILE_LDFLAGS)
 
 fermi: fermi.cpp
 	$(CXX) $(CXXFLAGS) $(CPPFLAGS) $(LDFLAGS) -o fermi fermi.cpp

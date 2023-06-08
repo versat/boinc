@@ -6,15 +6,15 @@ dnl not sure exactly what the minimum version is (but 2.13 wont work)
 AC_PREREQ(2.58)
 
 dnl Set the BOINC version here.  You can also use the set-version script.
-AC_INIT(BOINC, 7.17.0)
+AC_INIT(BOINC, 7.23.0)
 AC_CONFIG_MACRO_DIR([m4])
 LIBBOINC_VERSION=`echo ${PACKAGE_VERSION} | sed 's/\./:/g'`
 AC_SUBST([LIBBOINC_VERSION])
 
-WRAPPER_RELEASE=26016
+WRAPPER_RELEASE=26018
 AC_SUBST([WRAPPER_RELEASE])
 
-VBOXWRAPPER_RELEASE=26202
+VBOXWRAPPER_RELEASE=26206
 AC_SUBST([VBOXWRAPPER_RELEASE])
 
 AC_CANONICAL_TARGET
@@ -63,6 +63,9 @@ AC_PROG_MAKE_SET
 SAH_LINKS
 AC_LANG_PUSH(C)
 AM_PROG_CC_C_O
+
+PKG_PROG_PKG_CONFIG
+PKG_INSTALLDIR
 
 m4_divert_once([HELP_ENABLE],
   AS_HELP_STRING([BOINC Default enable values], [--enable-server --enable-client --enable-libraries --enable-manager: builds server, client, and libraries]))
@@ -122,11 +125,35 @@ AC_ARG_ENABLE(apps,
     [enable_apps=${enableval}],
     [enable_apps=no])
 
-AC_ARG_ENABLE(vcpkg,
-    AS_HELP_STRING([--enable-vcpkg],
+AC_ARG_ENABLE(apps-vcpkg,
+    AS_HELP_STRING([--enable-apps-vcpkg],
                    [enable building the boinc apps that depend on vcpkg]),
-    [enable_vcpkg=${enableval}],
-    [enable_vcpkg=no])
+    [enable_apps_vcpkg=${enableval}],
+    [enable_apps_vcpkg=no])
+
+AC_ARG_ENABLE(apps-mingw,
+    AS_HELP_STRING([--enable-apps-mingw],
+                   [enable building the boinc apps with mingw]),
+    [enable_apps_mingw=${enableval}],
+    [enable_apps_mingw=no])
+
+AC_ARG_ENABLE(apps-vbox,
+    AS_HELP_STRING([--enable-apps-vbox],
+                   [enable building the boinc apps that depend on vbox]),
+    [enable_apps_vbox=${enableval}],
+    [enable_apps_vbox=no])
+
+AC_ARG_ENABLE(apps-gui,
+    AS_HELP_STRING([--enable-apps-gui],
+                   [enable building the boinc apps that depend on gui]),
+    [enable_apps_gui=${enableval}],
+    [enable_apps_gui=no])
+
+AC_ARG_ENABLE(wasm,
+    AS_HELP_STRING([--enable-wasm],
+                   [enable building the boinc wasm]),
+    [enable_wasm=${enableval}],
+    [enable_wasm=no])
 
 AC_ARG_ENABLE(unit-tests,
     AS_HELP_STRING([--enable-unit-tests],
@@ -351,6 +378,10 @@ dnl the manpages only if docbook2x-man is available.
 AC_PATH_PROG(DOCBOOK2X_MAN, docbook2x-man)
 AM_CONDITIONAL(HAVE_DOCBOOK2X_MAN, [test -n "${DOCBOOK2X_MAN}"])
 
+if test "${enable_wasm}" = yes ; then
+  EXEEXT=.html
+fi
+
 AC_SUBST([CLIENT_BIN_FILENAME],[boinc${EXEEXT}])
 AC_SUBST([CLIENT_CMD_BIN_FILENAME],[boinccmd${EXEEXT}])
 AC_SUBST([CLIENT_GUI_BIN_FILENAME],[boincmgr${EXEEXT}])
@@ -516,8 +547,14 @@ SAH_CHECK_LIB([freetype], [fopen],
     [BOINC_EXTRA_LIBS="${BOINC_EXTRA_LIBS} ${sah_lib_last}"])
 SAH_CHECK_LIB([socket], [bind],
     [BOINC_EXTRA_LIBS="${BOINC_EXTRA_LIBS} ${sah_lib_last}"])
-SAH_CHECK_LIB([z], [gzopen],
-    [BOINC_EXTRA_LIBS="${BOINC_EXTRA_LIBS} ${sah_lib_last}"])
+SAH_CHECK_LIB([z], [gzopen], [
+      zlib_found=yes
+      BOINC_EXTRA_LIBS="${BOINC_EXTRA_LIBS} ${sah_lib_last}"])
+if test "x${zlib_found}" = "x" -a "${isWIN32}" = "no"; then
+    if test "x${enable_client}" = "xyes" -o "x${enable_server}" = "xyes" -o "x${enable_apps_vbox}" = "xyes"]; then
+        AC_MSG_ERROR([zlib is required but was not found])
+    fi
+fi
 SAH_CHECK_LIB([cups], [md5_finish],
     [BOINC_EXTRA_LIBS="${BOINC_EXTRA_LIBS} ${sah_lib_last}"])
 if test "${isWIN32}" = "yes" ; then
@@ -686,16 +723,28 @@ AC_TYPE_SIGNAL
 if test "${isWIN32}" = "yes" ; then
   AC_CHECK_HEADERS(winsock2.h winsock.h windows.h ws2tcpip.h winternl.h crtdbg.h)
 fi
-AC_CHECK_HEADERS([sys/types.h sys/un.h arpa/inet.h dirent.h grp.h fcntl.h inttypes.h stdint.h memory.h netdb.h netinet/in.h netinet/tcp.h netinet/ether.h net/if.h net/if_arp.h signal.h strings.h sys/auxv.h sys/file.h sys/fcntl.h sys/ipc.h sys/ioctl.h sys/msg.h sys/param.h sys/resource.h sys/select.h sys/sem.h sys/shm.h sys/sockio.h sys/socket.h sys/stat.h sys/statvfs.h sys/statfs.h sys/systeminfo.h sys/time.h sys/types.h sys/utsname.h sys/vmmeter.h sys/wait.h unistd.h utmp.h errno.h procfs.h ieeefp.h setjmp.h float.h sal.h execinfo.h xlocale.h])
+AC_CHECK_HEADERS(sys/types.h sys/un.h arpa/inet.h dirent.h grp.h fcntl.h inttypes.h stdint.h memory.h netdb.h netinet/in.h netinet/tcp.h netinet/ether.h net/if.h net/if_arp.h signal.h strings.h sys/auxv.h sys/file.h sys/fcntl.h sys/ipc.h sys/ioctl.h sys/msg.h sys/param.h sys/resource.h sys/select.h sys/sem.h sys/sockio.h sys/socket.h sys/stat.h sys/statvfs.h sys/statfs.h sys/systeminfo.h sys/time.h sys/types.h sys/utsname.h sys/vmmeter.h sys/wait.h unistd.h utmp.h errno.h procfs.h ieeefp.h setjmp.h float.h sal.h execinfo.h xlocale.h)
+
+if test "${enable_wasm}" != yes ; then
+  AC_CHECK_HEADERS(sys/shm.h)
+fi
 
 save_cxxflags="${CXXFLAGS}"
 save_cppflags="${CPPFLAGS}"
-CXXFLAGS="${CXXFLAGS} -msse3"
-CPPFLAGS="${CPPFLAGS} -msse3"
+sse3_flags="-msse3"
+avx_flags="-mavx"
+CXXFLAGS="${save_cxxflags} ${sse3_flags}"
+CPPFLAGS="${save_cppflags} ${sse3_flags}"
+AC_LINK_IFELSE([AC_LANG_PROGRAM([],)], [], [sse_flags=""])
+CXXFLAGS="${save_cxxflags} ${avx_flags}"
+CPPFLAGS="${save_cppflags} ${avx_flags}"
+AC_LINK_IFELSE([AC_LANG_PROGRAM([],)], [], [avx_flags=""])
+CXXFLAGS="${save_cxxflags} ${sse3_flags}"
+CXXFLAGS="${save_cxxflags} ${sse3_flags}"
 AC_CHECK_HEADERS([intrin.h x86intrin.h pmmintrin.h xmmintrin.h emmintrin.h])
-CXXFLAGS="${save_cxxflags} -mavx"
-CPPFLAGS="${save_cppflags} -mavx"
-AC_CHECK_HEADERS([immintrin.h avxintrin.h])
+CXXFLAGS="${save_cxxflags} ${avx_flags}"
+CPPFLAGS="${save_cppflags} ${avx_flags}"
+AC_CHECK_HEADERS([immintrin.h])
 
 AC_CHECK_DECLS([_xgetbv, xgetbv, __xgetbv, cpuid, _cpuid, __cpuid],
     [],[],[[
@@ -704,9 +753,6 @@ AC_CHECK_DECLS([_xgetbv, xgetbv, __xgetbv, cpuid, _cpuid, __cpuid],
 #endif
 #if HAVE_IMMINTRIN_H
 # include <immintrin.h>
-#endif
-#if HAVE_AVXINTRIN_H
-# include <avxintrin.h>
 #endif
 #if HAVE_X86INTRIN_H
 # include <x86intrin.h>
@@ -954,7 +1000,7 @@ AC_LANG_POP
 dnl Checks for library functions.
 AC_PROG_GCC_TRADITIONAL
 AC_FUNC_VPRINTF
-AC_CHECK_FUNCS([ether_ntoa setpriority sched_setscheduler strlcpy strlcat strcasestr strcasecmp sigaction getutent setutent getisax strdup _strdup strdupa _strdupa daemon stat64 putenv setenv unsetenv res_init strtoull localtime localtime_r gmtime gmtime_r uselocale _configthreadlocale])
+AC_CHECK_FUNCS([ether_ntoa setpriority sched_setscheduler strlcpy strlcat strcasestr strcasecmp sigaction getutent setutent getisax strdup _strdup strdupa _strdupa daemon stat64 putenv setenv unsetenv res_init strtoull localtime localtime_r gmtime gmtime_r uselocale _configthreadlocale ftok])
 
 AC_CHECK_DECLS([_fpreset, fpreset],
     [],[],[[
@@ -1074,7 +1120,15 @@ AM_CONDITIONAL(OS_OS2, [echo $host_os | grep '^os2' > /dev/null])
 AM_CONDITIONAL(OS_ARM_LINUX, [echo $host_alias | grep '^arm-linux' > /dev/null])
 AM_CONDITIONAL(OS_ARMV6_LINUX, [echo $host_alias | grep '^armv6-linux' > /dev/null])
 AM_CONDITIONAL(ANDROID, [test x"${ANDROID}" = xyes])
-AM_CONDITIONAL(BUILD_WITH_VCPKG, [test "${enable_vcpkg}" = yes])
+
+AM_CONDITIONAL(BUILD_WITH_VCPKG, [test "${enable_apps_vcpkg}" = yes])
+AM_CONDITIONAL(BUILD_WITH_VBOX, [test "${enable_apps_vbox}" = yes])
+AM_CONDITIONAL(BUILD_WITH_MINGW, [test "${enable_apps_mingw}" = yes])
+AM_CONDITIONAL(BUILD_WITH_GUI, [test "${enable_apps_gui}" = yes])
+if test "${enable_wasm}" = yes ; then
+  AC_DEFINE([WASM], [1], [build boinc wasm])
+fi
+
 
 dnl Whether to build fcgi components
 AM_CONDITIONAL(ENABLE_FCGI,[test "${enable_fcgi}" = yes])
@@ -1091,7 +1145,7 @@ AM_CONDITIONAL(ENABLE_UNIT_TESTS, [test "${enable_unit_tests}" = yes])
 AM_CONDITIONAL(ENABLE_BOINCCRYPT, [test "x${enable_server}" = xyes  || test "x${enable_client}" = xyes ])
 AM_CONDITIONAL(INSTALL_HEADERS, [test "${enable_install_headers}" = yes])
 AM_CONDITIONAL(HAVE_CUDA_LIB, [test "${enable_client}" = yes -a -f ./coprocs/CUDA/posix/${boinc_platform}/libcudart.so])
-AM_CONDITIONAL(BUILD_OPENCL, [test "x$with_opencl" = "xyes"])
+AM_CONDITIONAL(BUILD_WITH_OPENCL, [test "x$with_opencl" = "xyes"])
 
 dnl ======================================================================
 dnl some more vodoo required for building portable client-binary (client, clientgui)
@@ -1314,9 +1368,13 @@ AC_SUBST(FULLNAME)
 AC_CONFIG_FILES([
                  version.h
                  api/Makefile
+                 api/libboinc_api.pc
+                 api/libboinc_graphics2.pc
+                 api/libboinc_opencl.pc
                  apps/Makefile
                  clientgui/Makefile
                  clientgui/res/Makefile
+                 clientgui/skins/Makefile
                  clientscr/Makefile
                  client/Makefile
                  client/win/boinc_path_config.py:py/boinc_path_config.py.in
@@ -1328,6 +1386,9 @@ AC_CONFIG_FILES([
                  doc/manpages/Makefile
                  html/Makefile
                  lib/Makefile
+                 lib/libboinc.pc
+                 lib/libboinc_crypt.pc
+                 lib/libboinc_fcgi.pc
                  locale/Makefile
                  Makefile
                  py/Boinc/version.py
@@ -1355,6 +1416,7 @@ AC_CONFIG_FILES([
                  tools/Makefile
                  vda/Makefile
                  zip/Makefile
+                 zip/libboinc_zip.pc
                  zip/zip/Makefile
                  zip/unzip/Makefile
                  m4/Makefile
@@ -1365,6 +1427,30 @@ dnl AC_CONFIG_HEADER([config.h])
 AC_CONFIG_HEADERS([config.h])
 
 AC_OUTPUT
+
+if test "$enable_libraries" = "yes" -a "$have_glut" = yes -a "$have_jpeg" = 1; then
+  configured_to_build="${configured_to_build} libraries_graphics"
+fi
+
+if test "${enable_manager}" = yes -a "$have_Xcb" = yes -a "$have_Xcbatom" = yes; then
+  configured_to_build="${configured_to_build} manager_clientscr"
+fi
+
+if test "$enable_apps" = yes -a "$enable_apps_gui" = yes; then
+  configured_to_build="${configured_to_build} apps_gui"
+fi
+
+if test "$enable_apps" = yes -a "$enable_apps_vcpkg" = yes; then
+  configured_to_build="${configured_to_build} apps_vcpkg"
+fi
+
+if test "$enable_apps" = yes -a "$enable_apps_vbox" = yes; then
+  configured_to_build="${configured_to_build} apps_vbox"
+fi
+
+if test "$enable_apps" = yes -a "$enable_apps_mingw" = yes; then
+  configured_to_build="${configured_to_build} apps_mingw"
+fi
 
 echo "--- Configuring BOINC AC_PACKAGE_VERSION (${build_state}) ---"
 echo "--- Build Components: (${configured_to_build}) ---"

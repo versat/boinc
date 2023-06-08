@@ -19,8 +19,9 @@
 package edu.berkeley.boinc.attach
 
 import android.app.Dialog
+import android.os.Build.VERSION
+import android.os.Build.VERSION_CODES
 import android.os.Bundle
-import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -39,20 +40,25 @@ class ProjectInfoFragment : DialogFragment() {
     private val binding get() = _binding!!
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
-        Log.d(Logging.TAG, "ProjectInfoFragment onCreateView")
+        Logging.logVerbose(Logging.Category.GUI_VIEW, "ProjectInfoFragment onCreateView")
 
         _binding = AttachProjectInfoLayoutBinding.inflate(inflater, container, false)
 
         // get data
-        val info: ProjectInfo? = requireArguments().getParcelable("info")
+        val info: ProjectInfo? = if (VERSION.SDK_INT >= VERSION_CODES.TIRAMISU) {
+            requireArguments().getParcelable("info", ProjectInfo::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            requireArguments().getParcelable("info")
+        }
         if (info == null) {
-            Log.e(Logging.TAG, "ProjectInfoFragment info is null, return.")
+            Logging.logError(Logging.Category.GUI_VIEW, "ProjectInfoFragment info is null, return.")
 
             dismiss()
             return binding.root
         }
 
-        Log.d(Logging.TAG, "ProjectInfoFragment project: " + info.name)
+        Logging.logVerbose(Logging.Category.GUI_VIEW, "ProjectInfoFragment project: " + info.name)
 
         // set texts
         binding.projectName.text = info.name
@@ -64,12 +70,12 @@ class ProjectInfoFragment : DialogFragment() {
 
         // setup return button
         binding.continueButton.setOnClickListener {
-            Log.d(Logging.TAG, "ProjectInfoFragment continue clicked")
+            Logging.logVerbose(Logging.Category.USER_ACTION, "ProjectInfoFragment continue clicked")
 
             dismiss()
         }
 
-        Log.d(Logging.TAG, "ProjectInfoFragment image url: " + info.imageUrl)
+        Logging.logVerbose(Logging.Category.GUI_VIEW, "ProjectInfoFragment image url: " + info.imageUrl)
 
         Glide.with(this).asBitmap().placeholder(R.drawable.ic_boinc).load(info.imageUrl)
                 .transform(ScaleBitmapBy2()).into(binding.projectLogo)

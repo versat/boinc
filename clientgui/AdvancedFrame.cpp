@@ -1,6 +1,6 @@
 // This file is part of BOINC.
 // http://boinc.berkeley.edu
-// Copyright (C) 2018 University of California
+// Copyright (C) 2023 University of California
 //
 // BOINC is free software; you can redistribute it and/or modify it
 // under the terms of the GNU Lesser General Public License
@@ -34,6 +34,7 @@
 #include "miofile.h"
 #include "parse.h"
 #include "util.h"
+
 #include "BOINCGUIApp.h"
 #include "Events.h"
 #include "SkinManager.h"
@@ -367,12 +368,12 @@ bool CAdvancedFrame::CreateMenus() {
     );
     if (is_boinc_started_by_manager) {
         strMenuName.Printf(
-            _("Exit %s"),
+            _("E&xit %s"),
             pSkinAdvanced->GetApplicationShortName().c_str()
         );
     } else {
         strMenuName.Printf(
-            _("Exit %s"),
+            _("E&xit %s"),
             pSkinAdvanced->GetApplicationName().c_str()
         );
     }
@@ -777,8 +778,7 @@ bool CAdvancedFrame::CreateNotebook() {
     pPanel->SetAutoLayout(TRUE);
 
     // initialize notebook
-    m_pNotebook = new wxNotebook(pPanel, ID_FRAMENOTEBOOK, wxDefaultPosition, wxDefaultSize,
-                                wxNB_FIXEDWIDTH|wxCLIP_CHILDREN);
+    m_pNotebook = new wxNotebook(pPanel, ID_FRAMENOTEBOOK, wxDefaultPosition, wxDefaultSize, wxCLIP_CHILDREN);
 
     // layout frame panel
     wxBoxSizer *pPanelSizer = new wxBoxSizer(wxVERTICAL);
@@ -829,12 +829,12 @@ bool CAdvancedFrame::CreateNotebookPage( CBOINCBaseView* pwndNewNotebookPage) {
 
     pImageList = m_pNotebook->GetImageList();
     if (!pImageList) {
-        pImageList = new wxImageList(ADJUSTFORXDPI(16), ADJUSTFORYDPI(16), true, 0);
+        pImageList = new wxImageList(16, 16, true, 0);
         wxASSERT(pImageList != NULL);
         m_pNotebook->SetImageList(pImageList);
     }
 
-    iImageIndex = pImageList->Add(GetScaledBitmapFromXPMData(pwndNewNotebookPage->GetViewIcon()));
+    iImageIndex = pImageList->Add(wxBitmap(pwndNewNotebookPage->GetViewIcon()));
     m_pNotebook->AddPage(pwndNewNotebookPage, pwndNewNotebookPage->GetViewDisplayName(), TRUE, iImageIndex);
 
     wxLogTrace(wxT("Function Start/End"), wxT("CAdvancedFrame::CreateNotebookPage - Function End"));
@@ -1454,11 +1454,7 @@ void CAdvancedFrame::OnLaunchNewInstance(wxCommandEvent& WXUNUSED(event)) {
     wxLogTrace(wxT("Function Start/End"), wxT("CAdvancedFrame::OnLaunchNewInstance - Function Begin"));
 
 #ifndef __WXMAC__
-#ifdef __WXMSW__
-    HANDLE prog;
-#else
-    int prog;
-#endif
+    PROCESS_REF pid;
     wxString strExecutable = wxGetApp().GetRootDirectory() + wxGetApp().GetExecutableName();
     wxCharBuffer mbStrExecutable = strExecutable.mb_str();
     int argc = 2;
@@ -1473,9 +1469,9 @@ void CAdvancedFrame::OnLaunchNewInstance(wxCommandEvent& WXUNUSED(event)) {
         mbStrExecutable,
         argc,
         argv,
-        2.0,
-        prog
+        pid
     );
+    // TODO: check error return; check for early exit
 #else
     char s[MAXPATHLEN];
     char path[MAXPATHLEN];
@@ -1637,7 +1633,9 @@ void CAdvancedFrame::OnConnect(CFrameEvent& WXUNUSED(event)) {
     wxWindow* pwndNotebookPage = NULL;
     CBOINCBaseView* pView = NULL;
     int iItemCount = 0, iIndex;
+#ifndef __WXMAC__   // See comment in CBOINCGUIApp::OnFinishInit()
     int wasShown = 0;
+#endif
     int wasVisible = 0;
 
     wxASSERT(m_pNotebook);
@@ -1701,7 +1699,9 @@ void CAdvancedFrame::OnConnect(CFrameEvent& WXUNUSED(event)) {
         // Yes, but we don't have have credentials.
         // Bring up the Wizard to get them.
         //
+#ifndef __WXMAC__   // See comment in CBOINCGUIApp::OnFinishInit()
         wasShown = IsShown();
+#endif
         Show();
         wasVisible = wxGetApp().IsApplicationVisible();
         if (!wasVisible) {

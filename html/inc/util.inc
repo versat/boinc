@@ -1,7 +1,7 @@
 <?php
 // This file is part of BOINC.
 // http://boinc.berkeley.edu
-// Copyright (C) 2008 University of California
+// Copyright (C) 2021 University of California
 //
 // BOINC is free software; you can redistribute it and/or modify it
 // under the terms of the GNU Lesser General Public License
@@ -19,7 +19,6 @@
 // Utility functions for BOINC web pages
 // Stuff that's not web-specific (e.g. that's used in non-web scripts)
 // should go in util_basic.inc
-
 
 error_reporting(E_ALL);
 ini_set('display_errors', true);
@@ -112,6 +111,10 @@ if (!defined('POST_MAX_LINKS')) {
 if (!defined('DARK_MODE')) {
     define('DARK_MODE', false);
 }
+// require validated email to post in forums, send PMs, or make a profile
+if (!defined('VALIDATE_EMAIL_TO_POST')) {
+    define('VALIDATE_EMAIL_TO_POST', false);
+}
 
 // sleep this long on any login failure
 // (slow the rate of hacker attacks)
@@ -125,6 +128,7 @@ $did_page_head = false;
 define('KILO', 1024);
 define('MEGA', 1024*KILO);
 define('GIGA', 1024*MEGA);
+define('TERA', 1024*GIGA);
 
 // return true if this page is HTTPS
 //
@@ -172,15 +176,22 @@ $got_logged_in_user = false;
 
 function get_logged_in_user($must_be_logged_in=true) {
     global $g_logged_in_user, $got_logged_in_user;
-    if ($got_logged_in_user) return $g_logged_in_user;
+    if ($got_logged_in_user) {
+        // this could have been called earlier with $must_be_logged_in false
+        if ($must_be_logged_in) {
+            if ($g_logged_in_user) return $g_logged_in_user;
+        } else {
+            return $g_logged_in_user;
+        }
+    }
 
     if (web_stopped()) return null;
 
     $authenticator = null;
     if (isset($_COOKIE['auth'])) $authenticator = $_COOKIE['auth'];
 
-    $authenticator = BoincDb::escape_string($authenticator);
     if ($authenticator) {
+        $authenticator = BoincDb::escape_string($authenticator);
         $g_logged_in_user = BoincUser::lookup("authenticator='$authenticator'");
     }
     if ($must_be_logged_in && !$g_logged_in_user) {
@@ -249,7 +260,7 @@ function page_head(
     if ($did_page_head) {
         return;
     }
-    
+
     $did_page_head = true;
     $url_base = url_base();
 
@@ -889,19 +900,23 @@ function current_url() {
 // @param text The text to display on the button
 // @param desc The title of the destination - typically used as a popup
 // @param class The optional CSS class of the button. Defaults to a standard button
+// @params extra Additional text in href tag
 //
 
-function button_text($url, $text, $desc=null, $class="btn-success btn-sm") {
+function button_text($url, $text, $desc=null, $class=null, $extra='') {
     if (!$desc) {
         $desc = $text;
     }
-    return sprintf(' <a href="%s" title="%s" class="btn %s">%s</a>',
-        $url, $desc, $class, $text
+    if (!$class) {
+        $class = "btn-success btn-sm";
+    }
+    return sprintf(' <a href="%s" title="%s" class="btn %s" %s>%s</a>',
+        $url, $desc, $class, $extra, $text
     );
 }
 
-function show_button($url, $text, $desc=null, $class="btn-success btn-sm") {
-    echo button_text($url, $text, $desc=null, $class);
+function show_button($url, $text, $desc=null, $class=null, $extra=null) {
+    echo button_text($url, $text, $desc, $class, $extra);
 }
 
 // for places with a bunch of buttons, like forum posts
@@ -1014,6 +1029,7 @@ function sanitize_local_url($x) {
 // strip HTML tags
 //
 function sanitize_tags($x) {
+    if (!$x) return $x;
     return strip_tags($x);
 }
 
@@ -1028,10 +1044,25 @@ function sanitize_numeric($x) {
 }
 
 function sanitize_email($x) {
+    if (!$x) return $x;
     if (function_exists('filter_var')) {
         return filter_var($x, FILTER_SANITIZE_EMAIL);
     } else {
         return strip_tags($x);
+    }
+}
+
+// pages like top_hosts.php, team_members.php etc. have a textual
+// "sort_by" argument.
+// Check this to avoid XSS vulnerability
+//
+function sanitize_sort_by($x) {
+    switch($x) {
+    case 'expavg_credit':
+    case 'total_credit':
+        return;
+    default:
+        error_page('bad sort_by');
     }
 }
 
@@ -1175,6 +1206,9 @@ function text_end() {
 // express a size in terms of GB or MB
 //
 function size_string($x) {
+    if ($x > TERA) {
+        return number_format($x/TERA, 2)." TB";
+    }
     if ($x > GIGA) {
         return number_format($x/GIGA, 2)." GB";
     }
@@ -1183,6 +1217,20 @@ function size_string($x) {
 
 function cert_filename() {
     return defined("CERT_FILENAME")?CERT_FILENAME:"cert1.php";
+}
+
+// if user hasn't validated their email addr, tell them to
+//
+function check_validated_email($user) {
+    if (!$user->email_validated) {
+        page_head("Please validate your email address");
+        echo "
+            To post here, please
+            <a href=validate_email_addr.php>validate your email address<a>.
+        ";
+        page_tail();
+        exit;
+    }
 }
 
 $cvs_version_tracker[]="\$Id$";  //Generated automatically - do not edit

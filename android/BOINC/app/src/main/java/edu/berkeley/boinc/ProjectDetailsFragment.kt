@@ -25,17 +25,20 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Point
+import android.os.Build
 import android.os.Bundle
 import android.os.RemoteException
 import android.text.SpannableString
 import android.text.style.UnderlineSpan
-import android.util.Log
 import android.view.*
 import android.widget.Button
 import android.widget.TextView
 import androidx.core.graphics.scale
 import androidx.core.net.toUri
+import androidx.core.view.MenuHost
+import androidx.core.view.MenuProvider
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import edu.berkeley.boinc.databinding.ProjectDetailsLayoutBinding
 import edu.berkeley.boinc.databinding.ProjectDetailsSlideshowImageLayoutBinding
@@ -44,8 +47,8 @@ import edu.berkeley.boinc.rpc.Project
 import edu.berkeley.boinc.rpc.ProjectInfo
 import edu.berkeley.boinc.rpc.RpcClient
 import edu.berkeley.boinc.utils.Logging
-import kotlinx.coroutines.*
 import java.util.*
+import kotlinx.coroutines.*
 
 class ProjectDetailsFragment : Fragment() {
     private var url: String = ""
@@ -70,15 +73,15 @@ class ProjectDetailsFragment : Fragment() {
                 project = BOINCActivity.monitor!!.projects.firstOrNull { it.masterURL == url }
                 projectInfo = BOINCActivity.monitor!!.getProjectInfoAsync(url).await()
             } catch (e: Exception) {
-                Log.e(Logging.TAG, "ProjectDetailsFragment getCurrentProjectData could not" +
+                Logging.logError(Logging.Category.GUI_VIEW, "ProjectDetailsFragment getCurrentProjectData could not" +
                         " retrieve project list")
             }
             if (project == null) {
-                Log.w(Logging.TAG,
+                Logging.logWarning(Logging.Category.GUI_VIEW,
                         "ProjectDetailsFragment getCurrentProjectData could not find project for URL: $url")
             }
             if (projectInfo == null) {
-                Log.d(Logging.TAG,
+                Logging.logDebug(Logging.Category.GUI_VIEW,
                         "ProjectDetailsFragment getCurrentProjectData could not find project" +
                         " attach list for URL: $url")
             }
@@ -103,12 +106,80 @@ class ProjectDetailsFragment : Fragment() {
         // get data
         url = requireArguments().getString("url") ?: ""
         currentProjectData
-        setHasOptionsMenu(true) // enables fragment specific menu
+
         super.onCreate(savedInstanceState)
     }
 
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+
+        val menuHost: MenuHost = requireActivity() // enables fragment specific menu
+
+        // add the project menu to the fragment
+        menuHost.addMenuProvider(object: MenuProvider {
+            override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
+                menuInflater.inflate(R.menu.project_details_menu, menu)
+            }
+
+            override fun onPrepareMenu(menu: Menu) {
+                super.onPrepareMenu(menu)
+
+                if (project == null) {
+                    return
+                }
+
+                // no new tasks, adapt based on status
+                val nnt = menu.findItem(R.id.projects_control_nonewtasks)
+                if (project!!.doNotRequestMoreWork) {
+                    nnt.setTitle(R.string.projects_control_allownewtasks)
+                } else {
+                    nnt.setTitle(R.string.projects_control_nonewtasks)
+                }
+
+                // project suspension, adapt based on status
+                val suspend = menu.findItem(R.id.projects_control_suspend)
+                if (project!!.suspendedViaGUI) {
+                    suspend.setTitle(R.string.projects_control_resume)
+                } else {
+                    suspend.setTitle(R.string.projects_control_suspend)
+                }
+
+                // detach, only show when project not managed
+                val remove = menu.findItem(R.id.projects_control_remove)
+                if (project!!.attachedViaAcctMgr) {
+                    remove.isVisible = false
+                }
+            }
+
+            override fun onMenuItemSelected(menuItem: MenuItem): Boolean {
+                lifecycleScope.launch {
+                    when (menuItem.itemId) {
+                        R.id.projects_control_update -> performProjectOperation(RpcClient.PROJECT_UPDATE)
+                        R.id.projects_control_suspend -> if (project!!.suspendedViaGUI) {
+                            performProjectOperation(RpcClient.PROJECT_RESUME)
+                        } else {
+                            performProjectOperation(RpcClient.PROJECT_SUSPEND)
+                        }
+                        R.id.projects_control_nonewtasks -> if (project!!.doNotRequestMoreWork) {
+                            performProjectOperation(RpcClient.PROJECT_ANW)
+                        } else {
+                            performProjectOperation(RpcClient.PROJECT_NNW)
+                        }
+                        R.id.projects_control_reset -> showConfirmationDialog(RpcClient.PROJECT_RESET)
+                        R.id.projects_control_remove -> showConfirmationDialog(RpcClient.PROJECT_DETACH)
+                        else -> {
+                            Logging.logError(Logging.Category.USER_ACTION, "ProjectDetailsFragment onOptionsItemSelected: could not match ID")
+                        }
+                    }
+                }
+
+                return true
+            }
+        }, viewLifecycleOwner, Lifecycle.State.RESUMED)
+    }
+
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
-        Log.d(Logging.TAG, "ProjectDetailsFragment onCreateView")
+        Logging.logVerbose(Logging.Category.GUI_VIEW, "ProjectDetailsFragment onCreateView")
 
         // Inflate the layout for this fragment
         _binding = ProjectDetailsLayoutBinding.inflate(inflater, container, false)
@@ -123,7 +194,14 @@ class ProjectDetailsFragment : Fragment() {
     override fun onAttach(context: Context) {
         if (context is Activity) {
             val size = Point()
-            context.windowManager.defaultDisplay.getSize(size)
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+                @Suppress("DEPRECATION")
+                context.windowManager.defaultDisplay.getSize(size)
+            } else {
+                val r = context.windowManager.currentWindowMetrics.bounds
+                size.x = r.width()
+                size.y = r.height()
+            }
             width = size.x
             height = size.y
         }
@@ -140,65 +218,6 @@ class ProjectDetailsFragment : Fragment() {
         activity?.registerReceiver(mClientStatusChangeRec, ifcsc)
     }
 
-    override fun onCreateOptionsMenu(menu: Menu, inflater: MenuInflater) {
-        // appends the project specific menu to the main menu.
-        inflater.inflate(R.menu.project_details_menu, menu)
-        super.onCreateOptionsMenu(menu, inflater)
-    }
-
-    override fun onPrepareOptionsMenu(menu: Menu) {
-        super.onPrepareOptionsMenu(menu)
-        if (project == null) {
-            return
-        }
-
-        // no new tasks, adapt based on status
-        val nnt = menu.findItem(R.id.projects_control_nonewtasks)
-        if (project!!.doNotRequestMoreWork) {
-            nnt.setTitle(R.string.projects_control_allownewtasks)
-        } else {
-            nnt.setTitle(R.string.projects_control_nonewtasks)
-        }
-
-        // project suspension, adapt based on status
-        val suspend = menu.findItem(R.id.projects_control_suspend)
-        if (project!!.suspendedViaGUI) {
-            suspend.setTitle(R.string.projects_control_resume)
-        } else {
-            suspend.setTitle(R.string.projects_control_suspend)
-        }
-
-        // detach, only show when project not managed
-        val remove = menu.findItem(R.id.projects_control_remove)
-        if (project!!.attachedViaAcctMgr) {
-            remove.isVisible = false
-        }
-    }
-
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        lifecycleScope.launch {
-            when (item.itemId) {
-                R.id.projects_control_update -> performProjectOperation(RpcClient.PROJECT_UPDATE)
-                R.id.projects_control_suspend -> if (project!!.suspendedViaGUI) {
-                    performProjectOperation(RpcClient.PROJECT_RESUME)
-                } else {
-                    performProjectOperation(RpcClient.PROJECT_SUSPEND)
-                }
-                R.id.projects_control_nonewtasks -> if (project!!.doNotRequestMoreWork) {
-                    performProjectOperation(RpcClient.PROJECT_ANW)
-                } else {
-                    performProjectOperation(RpcClient.PROJECT_NNW)
-                }
-                R.id.projects_control_reset -> showConfirmationDialog(RpcClient.PROJECT_RESET)
-                R.id.projects_control_remove -> showConfirmationDialog(RpcClient.PROJECT_DETACH)
-                else -> {
-                    Log.e(Logging.TAG, "ProjectDetailsFragment onOptionsItemSelected: could not match ID")
-                }
-            }
-        }
-        return super.onOptionsItemSelected(item)
-    }
-
     private fun showConfirmationDialog(operation: Int) {
         val dialog = Dialog(requireActivity()).apply {
             requestWindowFeature(Window.FEATURE_NO_TITLE)
@@ -213,13 +232,14 @@ class ProjectDetailsFragment : Fragment() {
             val removeStr = getString(R.string.projects_confirm_detach_confirm)
             tvTitle.text = getString(R.string.projects_confirm_title, removeStr)
             tvMessage.text = getString(R.string.projects_confirm_message,
-                    removeStr.toLowerCase(Locale.ROOT), project!!.projectName + " "
+                removeStr.lowercase(Locale.ROOT), project!!.projectName + " "
                             + getString(R.string.projects_confirm_detach_message))
             confirm.text = removeStr
         } else if (operation == RpcClient.PROJECT_RESET) {
             val resetStr = getString(R.string.projects_confirm_reset_confirm)
             tvTitle.text = getString(R.string.projects_confirm_title, resetStr)
-            tvMessage.text = getString(R.string.projects_confirm_message, resetStr.toLowerCase(Locale.ROOT),
+            tvMessage.text = getString(R.string.projects_confirm_message,
+                resetStr.lowercase(Locale.ROOT),
                     project!!.projectName)
             confirm.text = resetStr
         }
@@ -296,19 +316,19 @@ class ProjectDetailsFragment : Fragment() {
                 binding.statusWrapper.visibility = View.GONE
             }
         } catch (e: Exception) {
-            Log.e(Logging.TAG, "ProjectDetailsFragment.updateChangingItems error: ", e)
+            Logging.logException(Logging.Category.GUI_VIEW, "ProjectDetailsFragment.updateChangingItems error: ", e)
         }
     }
 
     // executes project operations in new thread
     private suspend fun performProjectOperation(operation: Int) = coroutineScope {
-        Log.d(Logging.TAG, "performProjectOperation()")
+        Logging.logVerbose(Logging.Category.USER_ACTION, "performProjectOperation()")
 
         val success = async {
             return@async try {
                 BOINCActivity.monitor!!.projectOp(operation, project!!.masterURL)
             } catch (e: Exception) {
-                Log.e(Logging.TAG, "performProjectOperation() error: ", e)
+                Logging.logException(Logging.Category.USER_ACTION, "performProjectOperation() error: ", e)
 
                 false
             }
@@ -318,15 +338,15 @@ class ProjectDetailsFragment : Fragment() {
             try {
                 BOINCActivity.monitor!!.forceRefresh()
             } catch (e: RemoteException) {
-                Log.e(Logging.TAG, "performProjectOperation() error: ", e)
+                Logging.logException(Logging.Category.USER_ACTION, "performProjectOperation() error: ", e)
             }
         } else {
-            Log.e(Logging.TAG, "performProjectOperation() failed.")
+            Logging.logError(Logging.Category.USER_ACTION, "performProjectOperation() failed.")
         }
     }
 
     private suspend fun updateSlideshowImages() = coroutineScope {
-        Log.d(Logging.TAG,
+        Logging.logDebug(Logging.Category.GUI_VIEW,
                 "UpdateSlideshowImagesAsync updating images in new thread. project:" +
                 " $project!!.masterURL")
 
@@ -334,7 +354,7 @@ class ProjectDetailsFragment : Fragment() {
             slideshowImages = try {
                 BOINCActivity.monitor!!.getSlideshowForProject(project!!.masterURL)
             } catch (e: Exception) {
-                Log.e(Logging.TAG, "updateSlideshowImages: Could not load data, " +
+                Logging.logError(Logging.Category.GUI_VIEW, "updateSlideshowImages: Could not load data, " +
                         "clientStatus not initialized.")
 
                 return@withContext false
@@ -342,7 +362,7 @@ class ProjectDetailsFragment : Fragment() {
             return@withContext slideshowImages.isNotEmpty()
         }
 
-        Log.d(Logging.TAG,
+        Logging.logDebug(Logging.Category.GUI_VIEW,
                 "UpdateSlideshowImagesAsync success: $success, images: ${slideshowImages.size}")
         if (success && slideshowImages.isNotEmpty()) {
             binding.slideshowLoading.visibility = View.GONE

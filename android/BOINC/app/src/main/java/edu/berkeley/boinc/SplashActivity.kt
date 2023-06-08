@@ -19,11 +19,16 @@
 package edu.berkeley.boinc
 
 import android.app.ActivityManager.TaskDescription
-import android.content.*
-import android.os.Build
+import android.content.BroadcastReceiver
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.content.ServiceConnection
+import android.os.Build.VERSION
+import android.os.Build.VERSION_CODES
 import android.os.Bundle
 import android.os.IBinder
-import android.util.Log
 import androidx.appcompat.app.AppCompatActivity
 import edu.berkeley.boinc.attach.AttachActivity
 import edu.berkeley.boinc.client.ClientStatus
@@ -33,6 +38,7 @@ import edu.berkeley.boinc.client.MonitorAsync
 import edu.berkeley.boinc.databinding.ActivitySplashBinding
 import edu.berkeley.boinc.ui.eventlog.EventLogActivity
 import edu.berkeley.boinc.utils.Logging
+import edu.berkeley.boinc.utils.Logging.setLogCategories
 import edu.berkeley.boinc.utils.Logging.setLogLevel
 import edu.berkeley.boinc.utils.TaskRunner
 import edu.berkeley.boinc.utils.getBitmapFromVectorDrawable
@@ -61,10 +67,11 @@ class SplashActivity : AppCompatActivity() {
                 }
                 mIsWelcomeSpecificFirstRun =
                     BuildConfig.BUILD_TYPE.contains("xiaomi") && !monitor!!.welcomeStateFile
-                // read log level from monitor preferences and adjust accordingly
+                // Read log level from monitor preferences and adjust accordingly
                 setLogLevel(monitor!!.logLevel)
+                setLogCategories(monitor!!.logCategories)
             } catch (e: Exception) {
-                Log.w(Logging.TAG, "initializing log level failed.")
+                Logging.logException(Logging.Category.GUI_ACTIVITY, "initializing log level failed.", e)
             }
         }
 
@@ -84,16 +91,16 @@ class SplashActivity : AppCompatActivity() {
                     }
                     when (monitor!!.setupStatus) {
                         ClientStatus.SETUP_STATUS_AVAILABLE -> {
-                            Log.d(Logging.TAG, "SplashActivity SETUP_STATUS_AVAILABLE")
+                            Logging.logDebug(Logging.Category.GUI_ACTIVITY, "SplashActivity SETUP_STATUS_AVAILABLE")
                             // forward to BOINCActivity
                             val startMain = Intent(this@SplashActivity, BOINCActivity::class.java)
                             startActivity(startMain)
                         }
                         ClientStatus.SETUP_STATUS_NOPROJECT -> {
-                            Log.d(Logging.TAG, "SplashActivity SETUP_STATUS_NOPROJECT")
+                            Logging.logDebug(Logging.Category.GUI_ACTIVITY, "SplashActivity SETUP_STATUS_NOPROJECT")
                             // run benchmarks to speed up project initialization
                             monitor!!.runBenchmarksAsync { benchmarks: Boolean ->
-                                Log.d(Logging.TAG, "SplashActivity: runBenchmarks returned: $benchmarks")
+                                Logging.logDebug(Logging.Category.GUI_ACTIVITY, "SplashActivity: runBenchmarks returned: $benchmarks")
                             }
 
                             // forward to PROJECTATTACH
@@ -102,11 +109,11 @@ class SplashActivity : AppCompatActivity() {
                             startActivity(startAttach)
                         }
                         ClientStatus.SETUP_STATUS_ERROR -> {
-                            Log.e(Logging.TAG, "SplashActivity SETUP_STATUS_ERROR")
+                            Logging.logError(Logging.Category.GUI_ACTIVITY, "SplashActivity SETUP_STATUS_ERROR")
                         }
                     }
                 } catch (e: Exception) {
-                    Log.e(Logging.TAG, "SplashActivity.BroadcastReceiver.onReceive() error: ", e)
+                    Logging.logException(Logging.Category.GUI_ACTIVITY, "SplashActivity.BroadcastReceiver.onReceive() error: ", e)
                 }
             }
         }
@@ -118,14 +125,17 @@ class SplashActivity : AppCompatActivity() {
         setContentView(binding!!.root)
 
         // Use BOINC logo in Recent Apps Switcher
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) { // API 21
+        if (VERSION.SDK_INT >= VERSION_CODES.LOLLIPOP) { // API 21
             val label = title.toString()
-            val taskDescription: TaskDescription = if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) { // API 28
+            val taskDescription: TaskDescription = if (VERSION.SDK_INT < VERSION_CODES.P) { // API 28
                 val icon = this.getBitmapFromVectorDrawable(R.drawable.ic_boinc)
                 @Suppress("DEPRECATION")
                 TaskDescription(label, icon)
-            } else {
+            } else if (VERSION.SDK_INT < VERSION_CODES.TIRAMISU) { // API 28 < x < API 33
+                @Suppress("DEPRECATION")
                 TaskDescription(label, R.drawable.ic_boinc)
+            } else { // > API 33
+                TaskDescription.Builder().setLabel(label).setIcon(R.drawable.ic_boinc).build()
             }
             setTaskDescription(taskDescription)
         }
@@ -144,21 +154,21 @@ class SplashActivity : AppCompatActivity() {
     }
 
     override fun onResume() { // gets called by system every time activity comes to front. after onCreate upon first creation
-        Log.d(Logging.TAG, "SplashActivity onResume()")
+        Logging.logDebug(Logging.Category.GUI_ACTIVITY, "SplashActivity onResume()")
 
         super.onResume()
         registerReceiver(mClientStatusChangeRec, ifcsc)
     }
 
     override fun onPause() { // gets called by system every time activity loses focus.
-        Log.d(Logging.TAG, "SplashActivity onPause()")
+        Logging.logDebug(Logging.Category.GUI_ACTIVITY, "SplashActivity onPause()")
 
         super.onPause()
         unregisterReceiver(mClientStatusChangeRec)
     }
 
     override fun onDestroy() {
-        Log.d(Logging.TAG, "SplashActivity onDestroy()")
+        Logging.logDebug(Logging.Category.GUI_ACTIVITY, "SplashActivity onDestroy()")
 
         super.onDestroy()
         doUnbindService()
@@ -180,7 +190,7 @@ class SplashActivity : AppCompatActivity() {
     }
 
     private fun showNotExclusiveDialog() {
-        Log.e(Logging.TAG, "SplashActivity: another BOINC app found, show dialog.")
+        Logging.logError(Logging.Category.GUI_ACTIVITY, "SplashActivity: another BOINC app found, show dialog.")
 
         val notExclusiveDialogIntent = Intent()
         notExclusiveDialogIntent.setClassName(
@@ -192,13 +202,13 @@ class SplashActivity : AppCompatActivity() {
     }
 
     private fun isMutexAcquiredAsync(callback: ((Boolean) -> Unit)? = null) =
-        TaskRunner(callback, {isMutexAcquired()})
+        TaskRunner(callback) { isMutexAcquired() }
 
     private fun isMutexAcquired(): Boolean {
-        var retryCount = 5;
+        var retryCount = 5
         while(!monitor!!.boincMutexAcquired() && retryCount > 0) {
-            Thread.sleep(1000);
-            --retryCount;
+            Thread.sleep(1000)
+            --retryCount
         }
         return monitor!!.boincMutexAcquired()
     }

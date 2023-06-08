@@ -15,11 +15,11 @@ fi
 
 android/ci_build_vcpkg_client.sh
 
-cd android/BOINC 
+cd android/BOINC
 
 echo '===== BOINC Manager build start ====='
 
-./gradlew clean assemble jacocoTestReportDebug
+./gradlew clean assemble jacocoTestReportDebug --warning-mode all
 
 echo '===== BOINC Manager build done ====='
 

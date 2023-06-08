@@ -18,7 +18,6 @@
  */
 package edu.berkeley.boinc.rpc
 
-import android.util.Log
 import android.util.Xml
 import edu.berkeley.boinc.utils.Logging
 import org.xml.sax.Attributes
@@ -69,7 +68,7 @@ class MessagesParser : BaseParser() {
                 }
             }
         } catch (e: Exception) {
-            Log.e(Logging.TAG, "MessagesParser.endElement error: ", e)
+            Logging.logException(Logging.Category.XML, "MessagesParser.endElement error: ", e)
         }
     }
 
@@ -84,12 +83,14 @@ class MessagesParser : BaseParser() {
         @JvmStatic
         fun parse(rpcResult: String): List<Message> {
             return try {
+                // Replace 0x03 character in the rpcResult string
+                val rpcResultReplaced = rpcResult.replace("\u0003", "")
                 val parser = MessagesParser()
-                Xml.parse(rpcResult, parser)
+                Xml.parse(rpcResultReplaced, parser)
                 parser.messages
             } catch (e: SAXException) {
-                Log.e(Logging.TAG, "MessagesParser: malformed XML ", e)
-                Log.d(Logging.TAG, "MessagesParser: $rpcResult")
+                Logging.logException(Logging.Category.RPC, "MessagesParser: malformed XML ", e)
+                Logging.logDebug(Logging.Category.XML, "MessagesParser: $rpcResult")
 
                 emptyList()
             }

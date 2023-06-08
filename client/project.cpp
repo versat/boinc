@@ -87,7 +87,6 @@ void PROJECT::init() {
     disk_share = 0.0;
     anonymous_platform = false;
     non_cpu_intensive = false;
-    verify_files_on_app_start = false;
     report_results_immediately = false;
     pwf.reset(this);
     send_time_stats_log = 0;
@@ -125,6 +124,8 @@ void PROJECT::init() {
     gpu_ec = 0;
     gpu_time = 0;
     app_configs.clear();
+    upload_backoff.is_upload = true;
+    download_backoff.is_upload = false;
 
 #ifdef SIM
     idle_time = 0;
@@ -244,7 +245,6 @@ int PROJECT::parse_state(XML_PARSER& xp) {
         if (xp.parse_bool("send_full_workload", send_full_workload)) continue;
         if (xp.parse_bool("dont_use_dcf", dont_use_dcf)) continue;
         if (xp.parse_bool("non_cpu_intensive", non_cpu_intensive)) continue;
-        if (xp.parse_bool("verify_files_on_app_start", verify_files_on_app_start)) continue;
         if (xp.parse_bool("suspended_via_gui", suspended_via_gui)) continue;
         if (xp.parse_bool("dont_request_more_work", dont_request_more_work)) continue;
         if (xp.parse_bool("detach_when_done", detach_when_done)) continue;
@@ -421,7 +421,7 @@ int PROJECT::write_state(MIOFILE& out, bool gui_rpc) {
         "    <njobs_error>%d</njobs_error>\n"
         "    <elapsed_time>%f</elapsed_time>\n"
         "    <last_rpc_time>%f</last_rpc_time>\n"
-        "%s%s%s%s%s%s%s%s%s%s%s%s%s%s",
+        "%s%s%s%s%s%s%s%s%s%s%s%s%s",
         master_url,
         project_name,
         symstore,
@@ -465,7 +465,6 @@ int PROJECT::write_state(MIOFILE& out, bool gui_rpc) {
         send_full_workload?"    <send_full_workload/>\n":"",
         dont_use_dcf?"    <dont_use_dcf/>\n":"",
         non_cpu_intensive?"    <non_cpu_intensive/>\n":"",
-        verify_files_on_app_start?"    <verify_files_on_app_start/>\n":"",
         suspended_via_gui?"    <suspended_via_gui/>\n":"",
         dont_request_more_work?"    <dont_request_more_work/>\n":"",
         detach_when_done?"    <detach_when_done/>\n":"",
@@ -607,7 +606,6 @@ void PROJECT::copy_state_fields(PROJECT& p) {
     send_time_stats_log = p.send_time_stats_log;
     send_job_log = p.send_job_log;
     non_cpu_intensive = p.non_cpu_intensive;
-    verify_files_on_app_start = p.verify_files_on_app_start;
     suspended_via_gui = p.suspended_via_gui;
     dont_request_more_work = p.dont_request_more_work;
     detach_when_done = p.detach_when_done;

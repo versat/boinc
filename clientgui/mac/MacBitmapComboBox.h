@@ -15,6 +15,13 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with BOINC.  If not, see <http://www.gnu.org/licenses/>.
 
+// On Macintosh we use only native controls in Simple View so the macOS
+// automatically provides accessibility support. Though wxBitmapComboBox
+// does not use MacOS native controls, wxChoice uses NSPopUpButton, so
+// we create our own BitmapComboBox on Macintosh based on wxChoice, which
+// we have hacked to allow adding bitmaps.
+//
+
 #ifndef __MACBITMAPCOMBOBOX__
 #define __MACBITMAPCOMBOBOX__
 
@@ -25,7 +32,7 @@ WXDLLEXPORT_DATA(extern const wxChar) CBOINCBitmapComboBoxNameStr[];
 
 class CDrawLargeBitmapEvent;    // Forward declaration
 
-class CBOINCBitmapChoice : public wxChoice 
+class CBOINCBitmapChoice : public wxChoice
 {
     DECLARE_DYNAMIC_CLASS(CBOINCBitmapChoice )
     DECLARE_EVENT_TABLE()
@@ -36,7 +43,7 @@ public:
     virtual ~CBOINCBitmapChoice();
 
     CBOINCBitmapChoice(wxWindow *parent, wxWindowID id,
-            const wxString& value = wxT(""), 
+            const wxString& value = wxT(""),
             const wxPoint& pos = wxDefaultPosition,
             const wxSize& size = wxDefaultSize,
             int n = 0, const wxString choices[] = NULL,
@@ -48,7 +55,7 @@ public:
     void SetItemBitmap(unsigned int n, const wxBitmap& bitmap);
 };
 
-class CBOINCBitmapComboBox : public wxPanel 
+class CBOINCBitmapComboBox : public wxPanel
 {
     DECLARE_DYNAMIC_CLASS( CBOINCBitmapComboBox )
     DECLARE_EVENT_TABLE()
@@ -59,7 +66,7 @@ public:
     virtual ~CBOINCBitmapComboBox();
 
     CBOINCBitmapComboBox(wxWindow *parent, wxWindowID id,
-            const wxString& value = wxT(""), 
+            const wxString& value = wxT(""),
             const wxPoint& pos = wxDefaultPosition,
             const wxSize& size = wxDefaultSize,
             int n = 0, const wxString choices[] = NULL,
@@ -86,7 +93,7 @@ public:
     void Clear();
     void SetToolTip(wxString& s);
     void SetToolTip(wxToolTip* tip);
-    
+
 private:
     void OnPaint(wxPaintEvent& event);
     void DrawLargeBitmap(CDrawLargeBitmapEvent& event);

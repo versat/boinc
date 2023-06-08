@@ -26,13 +26,9 @@ export VCPKG_DIR=$VCPKG_ROOT/installed/arm64-android
 CONFIG_FLAGS=""
 CONFIG_LDFLAGS=""
 
-if [ $BUILD_WITH_VCPKG = "yes" ]; then
-    CONFIG_LDFLAGS="-L$VCPKG_DIR/lib"
-    CONFIG_FLAGS="--with-libcurl=$VCPKG_DIR --with-ssl=$VCPKG_DIR --enable-vcpkg"
-else
-    CONFIG_FLAGS="--with-ssl=$TCINCLUDES"
-    CONFIG_LDFLAGS="-L$TCSYSROOT/usr/lib -L$TCINCLUDES/lib"
-fi
+CONFIG_LDFLAGS="-L$VCPKG_DIR/lib"
+CONFIG_FLAGS="--with-ssl=$VCPKG_DIR --with-libcurl=$VCPKG_DIR --enable-apps-vcpkg"
+export _libcurl_pc="$VCPKG_DIR/lib/pkgconfig/libcurl.pc"
 
 export ANDROID="yes"
 export PATH="$TCBINARIES:$TCINCLUDES/bin:$PATH"
@@ -65,7 +61,7 @@ else
 fi
 
 if [ -n "$COMPILEBOINC" ]; then
-    cd $BOINC    
+    cd $BOINC
     echo "===== building example for arm64 from $PWD ====="
     if [ -n "$MAKECLEAN" ] && [ -f "Makefile" ]; then
         echo "=== building example clean ==="

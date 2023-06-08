@@ -20,10 +20,14 @@ package edu.berkeley.boinc
 
 import android.content.SharedPreferences
 import android.os.Bundle
-import android.util.Log
 import android.widget.Toast
 import androidx.core.content.edit
-import androidx.preference.*
+import androidx.preference.CheckBoxPreference
+import androidx.preference.EditTextPreference
+import androidx.preference.PreferenceCategory
+import androidx.preference.PreferenceFragmentCompat
+import androidx.preference.PreferenceManager
+import androidx.preference.SeekBarPreference
 import edu.berkeley.boinc.rpc.GlobalPreferences
 import edu.berkeley.boinc.rpc.HostInfo
 import edu.berkeley.boinc.utils.Logging
@@ -43,16 +47,16 @@ class SettingsFragment : PreferenceFragmentCompat(), SharedPreferences.OnSharedP
 
     override fun onResume() {
         super.onResume()
-        preferenceManager.sharedPreferences.registerOnSharedPreferenceChangeListener(this)
+        preferenceManager.sharedPreferences!!.registerOnSharedPreferenceChangeListener(this)
     }
 
     override fun onPause() {
         super.onPause()
-        preferenceManager.sharedPreferences.unregisterOnSharedPreferenceChangeListener(this)
+        preferenceManager.sharedPreferences!!.unregisterOnSharedPreferenceChangeListener(this)
     }
 
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
-        val sharedPreferences = PreferenceManager.getDefaultSharedPreferences(context)
+        val sharedPreferences = PreferenceManager.getDefaultSharedPreferences(requireContext())
         if ("usedCpuCores" !in sharedPreferences) {
             sharedPreferences.edit { putInt("usedCpuCores", pctCpuCoresToNumber(hostInfo, prefs.maxNoOfCPUsPct)) }
         }
@@ -72,7 +76,7 @@ class SettingsFragment : PreferenceFragmentCompat(), SharedPreferences.OnSharedP
         val stationaryDeviceMode = BOINCActivity.monitor!!.stationaryDeviceMode
         val stationaryDeviceSuspected = BOINCActivity.monitor!!.isStationaryDeviceSuspected
 
-        preferenceManager.sharedPreferences.registerOnSharedPreferenceChangeListener(this)
+        preferenceManager.sharedPreferences!!.registerOnSharedPreferenceChangeListener(this)
 
         setPreferencesFromResource(R.xml.root_preferences, rootKey)
 
@@ -132,7 +136,7 @@ class SettingsFragment : PreferenceFragmentCompat(), SharedPreferences.OnSharedP
             "powerSources" -> {
                 val powerSources = sharedPreferences.getStringSet(key,
                         resources.getStringArray(R.array.power_source_default).toSet()) ?: emptySet()
-                Log.d(Logging.TAG, "powerSources: $powerSources")
+                Logging.logDebug(Logging.Category.SETTINGS, "powerSources: $powerSources")
                 BOINCActivity.monitor!!.powerSourceAc = "wall" in powerSources
                 BOINCActivity.monitor!!.powerSourceUsb = "usb" in powerSources
                 BOINCActivity.monitor!!.powerSourceWireless = "wireless" in powerSources
@@ -221,9 +225,16 @@ class SettingsFragment : PreferenceFragmentCompat(), SharedPreferences.OnSharedP
                 val flags = sharedPreferences.getStringSet(key, emptySet()) ?: emptySet()
                 BOINCActivity.monitor!!.setCcConfigAsync(formatOptionsToCcConfig(flags))
             }
+            "guiLogCategories" -> {
+                val categories = (sharedPreferences.getStringSet(key, emptySet()) ?: emptySet()).toList()
+                BOINCActivity.monitor!!.logCategories = categories
+                Logging.setLogCategories(categories)
+            }
             "logLevel" -> {
-                BOINCActivity.monitor!!.logLevel = sharedPreferences.getInt(key,
-                        resources.getInteger(R.integer.prefs_default_loglevel))
+                val logLevel = sharedPreferences.getInt(key,
+                    resources.getInteger(R.integer.prefs_default_loglevel))
+                BOINCActivity.monitor!!.logLevel = logLevel
+                Logging.setLogLevel(logLevel)
             }
         }
     }
@@ -262,7 +273,7 @@ class SettingsFragment : PreferenceFragmentCompat(), SharedPreferences.OnSharedP
     private fun writeClientPrefs(prefs: GlobalPreferences) {
         BOINCActivity.monitor!!.setGlobalPreferencesAsync(prefs) {
             success: Boolean ->
-                Log.d(Logging.TAG, "writeClientPrefs() async call returned: $success")
+                Logging.logDebug(Logging.Category.SETTINGS, "writeClientPrefs() async call returned: $success")
         }
     }
 
@@ -290,7 +301,7 @@ class SettingsFragment : PreferenceFragmentCompat(), SharedPreferences.OnSharedP
 
     private fun quitClient() {
         BOINCActivity.monitor!!.quitClientAsync { result: Boolean ->
-            Log.d(Logging.TAG, "SettingActivity: quitClient returned: $result")
+            Logging.logDebug(Logging.Category.SETTINGS, "SettingActivity: quitClient returned: $result")
         }
     }
 }

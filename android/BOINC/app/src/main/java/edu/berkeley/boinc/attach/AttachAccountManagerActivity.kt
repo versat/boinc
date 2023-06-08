@@ -25,7 +25,6 @@ import android.content.ServiceConnection
 import android.net.ConnectivityManager
 import android.os.Bundle
 import android.os.IBinder
-import android.util.Log
 import android.view.View
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
@@ -37,6 +36,7 @@ import edu.berkeley.boinc.BOINCActivity
 import edu.berkeley.boinc.R
 import edu.berkeley.boinc.client.IMonitor
 import edu.berkeley.boinc.client.Monitor
+import edu.berkeley.boinc.client.MonitorAsync
 import edu.berkeley.boinc.databinding.ActivityAttachProjectAcctMgrBinding
 import edu.berkeley.boinc.rpc.AccountManager
 import edu.berkeley.boinc.utils.*
@@ -47,7 +47,7 @@ import kotlinx.coroutines.withContext
 
 class AttachAccountManagerActivity  : AppCompatActivity() {
     // services
-    private var monitor: IMonitor? = null
+    private var monitor: MonitorAsync? = null
     private var mIsBound = false
     private var attachService: ProjectAttachService? = null
     private var asIsBound = false
@@ -72,7 +72,7 @@ class AttachAccountManagerActivity  : AppCompatActivity() {
         }
 
         binding.continueButton.setOnClickListener {
-            Log.d(Logging.TAG, "AttachAccountManagerActivity continue clicked")
+            Logging.logVerbose(Logging.Category.USER_ACTION, "AttachAccountManagerActivity continue clicked")
 
             if (!checkDeviceOnline()) return@setOnClickListener
             if (asIsBound) {
@@ -98,7 +98,7 @@ class AttachAccountManagerActivity  : AppCompatActivity() {
                     attachProject(url, name, pwd)
                 }
             } else {
-                Log.d(Logging.TAG, "AttachAccountManagerActivity service not bound, do nothing...")
+                Logging.logDebug(Logging.Category.GUI_ACTIVITY, "AttachAccountManagerActivity service not bound, do nothing...")
             }
         }
 
@@ -126,7 +126,7 @@ class AttachAccountManagerActivity  : AppCompatActivity() {
             val toast = Toast.makeText(this, R.string.attachproject_list_no_internet, Toast.LENGTH_SHORT)
             toast.show()
 
-            Log.d(Logging.TAG, "AttachAccountManagerActivity not online, stop!")
+            Logging.logDebug(Logging.Category.GUI_ACTIVITY, "AttachAccountManagerActivity not online, stop!")
         }
         return online
     }
@@ -142,7 +142,7 @@ class AttachAccountManagerActivity  : AppCompatActivity() {
         val result = withContext(Dispatchers.Default) { attachService!!.attachAcctMgr(url, name, pwd) }
 
         if (result.isOK) {
-            Log.d(Logging.TAG, "AttachAccountManagerActivity attachProject() finished, start main activity")
+            Logging.logDebug(Logging.Category.GUI_ACTIVITY, "AttachAccountManagerActivity attachProject() finished, start main activity")
 
             val intent = Intent(this@AttachAccountManagerActivity, BOINCActivity::class.java).apply {
                 // add flags to return to main activity and clearing all others and clear the back stack
@@ -166,7 +166,7 @@ class AttachAccountManagerActivity  : AppCompatActivity() {
     }
 
     private fun mapErrorNumToString(code: Int): String {
-        Log.d(Logging.TAG, "mapErrorNumToString for error: $code")
+        Logging.logDebug(Logging.Category.GUI_ACTIVITY, "mapErrorNumToString for error: $code")
 
         val stringResource = when (code) {
             ERR_DB_NOT_FOUND -> R.string.attachproject_error_wrong_name
@@ -209,9 +209,9 @@ class AttachAccountManagerActivity  : AppCompatActivity() {
         private fun fillAdapterData() {
             if (mIsBound) {
                 val accountManagers = try {
-                    monitor!!.accountManagers
+                    monitor!!.getAccountManagersAsync().await()
                 } catch (e: Exception) {
-                    Log.e(Logging.TAG, "AttachAccountManagerActivity onCreate() mMonitorConnection error: $e")
+                    Logging.logError(Logging.Category.MONITOR, "AttachAccountManagerActivity onCreate() mMonitorConnection error: $e")
 
                     emptyList<AccountManager>()
                 }
@@ -225,7 +225,7 @@ class AttachAccountManagerActivity  : AppCompatActivity() {
         override fun onServiceConnected(className: ComponentName, service: IBinder) {
             // This is called when the connection with the service has been established, getService returns
             // the Monitor object that is needed to call functions.
-            monitor = IMonitor.Stub.asInterface(service)
+            monitor = MonitorAsync(IMonitor.Stub.asInterface(service))
             mIsBound = true
             fillAdapterData()
         }
@@ -234,8 +234,8 @@ class AttachAccountManagerActivity  : AppCompatActivity() {
             // This should not happen
             monitor = null
             mIsBound = false
-            
-            Log.e(Logging.TAG, "BAttachAccountManagerActivity onServiceDisconnected")
+
+            Logging.logError(Logging.Category.GUI_ACTIVITY, "AttachAccountManagerActivity onServiceDisconnected")
         }
     }
     private val mASConnection: ServiceConnection = object : ServiceConnection {

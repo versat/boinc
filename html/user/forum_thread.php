@@ -129,7 +129,7 @@ if ($forum->parent_type == 0) {
                     show_button(
                         "forum_thread_status.php?id=$thread->id&action=set",
                         tra("My question was answered"),
-                        tra("Click here if your question has been adequately answered") 
+                        tra("Click here if your question has been adequately answered")
                     );
                 }
             } else {
@@ -281,6 +281,12 @@ echo ' <input class="btn btn-default btn-sm" type="submit" value="'.tra('Sort').
     </td></tr></table>
     </form><p>
 ';
+
+// if it's news, show original post first
+//
+if (is_news_forum($forum) && !is_moderator($logged_in_user, null)) {
+    $sort_style = CREATE_TIME_OLD;
+}
 
 show_posts(
     $thread, $forum, $start, $postid, $sort_style, $filter, $logged_in_user

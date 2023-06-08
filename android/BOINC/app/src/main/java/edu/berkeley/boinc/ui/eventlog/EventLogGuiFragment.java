@@ -19,24 +19,20 @@
 package edu.berkeley.boinc.ui.eventlog;
 
 import android.os.Bundle;
-import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-
 import androidx.annotation.NonNull;
 import androidx.fragment.app.Fragment;
 import androidx.recyclerview.widget.LinearLayoutManager;
-
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-
 import edu.berkeley.boinc.R;
 import edu.berkeley.boinc.adapter.GuiLogRecyclerViewAdapter;
 import edu.berkeley.boinc.databinding.EventLogGuiLayoutBinding;
 import edu.berkeley.boinc.utils.BOINCUtils;
 import edu.berkeley.boinc.utils.Logging;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
 
 public class EventLogGuiFragment extends Fragment {
     private EventLogActivity a;
@@ -75,7 +71,7 @@ public class EventLogGuiFragment extends Fragment {
         a.getGuiLogData().clear();
         try {
             String logLevelFilter = Logging.TAG;
-            switch(Logging.LOGLEVEL) {
+            switch(Logging.getLogLevel()) {
                 case 0:
                     return;
                 case 1:
@@ -109,13 +105,13 @@ public class EventLogGuiFragment extends Fragment {
                 x++;
             }
 
-            Log.v(Logging.TAG, "readLogcat read " + a.getGuiLogData().size() + " lines.");
+            Logging.logVerbose(Logging.Category.DEVICE, "readLogcat read " + a.getGuiLogData().size() + " lines.");
 
             adapter.notifyDataSetChanged();
             binding.getRoot().setRefreshing(false);
         }
         catch(IOException e) {
-            Log.e(Logging.TAG, "readLogcat failed", e);
+            Logging.logException(Logging.Category.DEVICE, "readLogcat failed", e);
         }
     }
 }

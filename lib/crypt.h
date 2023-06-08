@@ -124,16 +124,16 @@ extern int generate_signature(
 );
 
 //   Check if sfileMsg (of length sfsize) has been created from sha1_md using the
-//   private key beloning to the public key file cFile
+//   private key belonging to the public key file cFile
 //   Return:
 //    1: YES
 //    0: NO or error
 extern int check_validity_of_cert(
-    const char *cFile, const unsigned char *sha1_md, 
+    const char *cFile, const unsigned char *sha1_md,
     unsigned char *sfileMsg, const int sfsize, const char* caPath
 );
 
-extern char *check_validity(const char *certPath, const char *origFile, 
+extern char *check_validity(const char *certPath, const char *origFile,
     unsigned char *signature, char* caPath
 );
 

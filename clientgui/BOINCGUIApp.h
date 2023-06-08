@@ -1,6 +1,6 @@
 // This file is part of BOINC.
 // http://boinc.berkeley.edu
-// Copyright (C) 2016 University of California
+// Copyright (C) 2023 University of California
 //
 // BOINC is free software; you can redistribute it and/or modify it
 // under the terms of the GNU Lesser General Public License
@@ -45,6 +45,11 @@ class CSkinManager;
 class CDlgEventLog;
 class CRPCFinishedEvent;
 
+struct GUI_SUPPORTED_LANG {
+    int Language;       // wxLanguage ID, used to set the locale
+    wxString Label;     // Text to display in the options dialog
+};
+
 #ifdef __WXMAC__
     OSErr               QuitAppleEventHandler(const AppleEvent *appleEvt, AppleEvent* reply, UInt32 refcon);
 #endif
@@ -58,7 +63,7 @@ protected:
 #ifndef __WXMAC__
     void                OnEndSession(wxCloseEvent& event);
 #endif
-    
+
     void                OnInitCmdLine(wxCmdLineParser &parser);
     bool                OnCmdLineParsed(wxCmdLineParser &parser);
 
@@ -102,23 +107,25 @@ protected:
     int                 m_iShutdownCoreClient;
     int                 m_iDisplayExitDialog;
     int                 m_iDisplayShutdownConnectedClientDialog;
+#ifdef __WXMAC__
+    int                 m_iHideMenuBarIcon;
+#endif
 
     bool                m_bGUIVisible;
-    
+
     int                 m_iGUISelected;
     bool                m_bDebugSkins;
     bool                m_bMultipleInstancesOK;
     bool                m_bHostnamePasswordSet;
     bool                m_bFilterEvents;
     bool                m_bAboutDialogIsOpen;
-    bool                m_bRunDaemon;  
-    bool                m_bNeedRunDaemon;  
+    bool                m_bRunDaemon;
+    bool                m_bNeedRunDaemon;
 
-    // The last value defined in the wxLanguage enum is wxLANGUAGE_USER_DEFINED.
-    // defined in: wx/intl.h
-    wxArrayString       m_astrLanguages;
+    std::vector<GUI_SUPPORTED_LANG> m_astrLanguages;
     wxString            m_strISOLanguageCode;
-    
+    bool                m_bUseDefaultLocale;
+
     int                 m_bSafeMessageBoxDisplayed;
 
 public:
@@ -133,8 +140,8 @@ public:
     wxString            GetExecutableName()         { return m_strBOINCMGRExecutableName; }
     wxString            GetRootDirectory()          { return m_strBOINCMGRRootDirectory; }
     wxString            GetDataDirectory()          { return m_strBOINCMGRDataDirectory; }
-    wxString            GetClientHostNameArg()      { return m_strHostNameArg; }    
-    wxString            GetClientPasswordArg()      { return m_strPasswordArg; }    
+    wxString            GetClientHostNameArg()      { return m_strHostNameArg; }
+    wxString            GetClientPasswordArg()      { return m_strPasswordArg; }
     wxString            GetArguments()              { return m_strBOINCArguments; }
     int                 GetClientRPCPortArg()       { return m_iRPCPortArg; }
     CDlgEventLog*       GetEventLog()               { return m_pEventLog; }
@@ -169,19 +176,28 @@ public:
     void                SetBOINCMGRDisplayShutdownConnectedClientMessage(int iDisplayShutdownConnectedClientDialog)
                                                     { m_iDisplayShutdownConnectedClientDialog = iDisplayShutdownConnectedClientDialog; }
 
-    bool                GetRunDaemon()
-                                                    { return m_bRunDaemon; }  
-    void                SetRunDaemon(bool bRunDaemon)  
-                                                    { m_bRunDaemon = bRunDaemon; }  
-  
-    bool                GetNeedRunDaemon()  
-                                                    { return m_bNeedRunDaemon; }  
+#ifdef __WXMAC__
+    int                 GetBOINCMGRHideMenuBarIcon()
+                                                    { return m_iHideMenuBarIcon; }
+    void                SetBOINCMGRHideMenuBarIcon(int iHideMenuBarIcon)
+                                                    { m_iHideMenuBarIcon = iHideMenuBarIcon; }
+#endif
 
-    wxArrayString&      GetSupportedLanguages()     { return m_astrLanguages; }
+    bool                GetRunDaemon()
+                                                    { return m_bRunDaemon; }
+    void                SetRunDaemon(bool bRunDaemon)
+                                                    { m_bRunDaemon = bRunDaemon; }
+
+    bool                GetNeedRunDaemon()
+                                                    { return m_bNeedRunDaemon; }
+
+    const std::vector<GUI_SUPPORTED_LANG>& GetSupportedLanguages() const { return m_astrLanguages; }
     wxString            GetISOLanguageCode()        { return m_strISOLanguageCode; }
     void                SetISOLanguageCode(wxString strISOLanguageCode)
                                                     { m_strISOLanguageCode = strISOLanguageCode; }
-    
+    bool                UseDefaultLocale() const    { return m_bUseDefaultLocale; }
+    void                SetUseDefaultLocale(bool b) { m_bUseDefaultLocale = b; }
+
     void                SetEventLogWasActive(bool wasActive) { m_bEventLogWasActive = wasActive; }
     void                DisplayEventLog(bool bShowWindow = true);
     void                OnEventLogClose();
@@ -193,10 +209,10 @@ public:
     int                 StartBOINCDefaultScreensaverTest();
 
     bool                SetActiveGUI(int iGUISelection, bool bShowWindow = true);
-    
+
     void                OnActivateApp( wxActivateEvent& event );
     void                OnRPCFinished( CRPCFinishedEvent& event );
-    
+
     int                 ConfirmExit();
 
     int                 SafeMessageBox(
@@ -220,9 +236,9 @@ public:
 
 
     int                 UpdateSystemIdleDetection();
-    
+
     void                SetEventFiltering(bool set) { m_bFilterEvents = set; }
-    
+
     void                SetAboutDialogIsOpen(bool set) { m_bAboutDialogIsOpen = set; }
     bool                GetAboutDialogIsOpen() { return m_bAboutDialogIsOpen; }
 
@@ -232,13 +248,13 @@ public:
     bool                WasFileModifiedBeforeSystemBoot(char * filePath);
     void                HideThisApp(void);
     void                getDisplayNameForThisApp(char* pathBuf, size_t bufSize);
-    
+
 #if !wxCHECK_VERSION(3,0,1)
 // This should be fixed after wxCocoa 3.0.0:
 // http://trac.wxwidgets.org/ticket/16156
 
     // Override standard wxCocoa wxApp::CallOnInit() to allow Manager
-    // to run properly when launched hidden on login via Login Item. 
+    // to run properly when launched hidden on login via Login Item.
     bool                CallOnInit();
 #endif
 

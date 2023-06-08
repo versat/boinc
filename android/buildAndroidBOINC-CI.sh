@@ -20,12 +20,6 @@ set -e
 #
 
 # When you want to invalidate openssl and curl without change their versions.
-export REV=1
-export ARMV6_REV=1
-export OPENSSL_VERSION=1.1.1k
-export CURL_VERSION=7.74.0
-export NDK_VERSION=21d
-export NDK_ARMV6_VERSION=15c
 
 # checks if a given path is canonical (absolute and does not contain relative links)
 # from http://unix.stackexchange.com/a/256437
@@ -51,7 +45,6 @@ component=""
 silent=""
 verbose="${VERBOSE:-no}"
 ci=""
-build_with_vcpkg="no"
 
 while [ $# -gt 0 ]; do
     key="$1"
@@ -74,9 +67,6 @@ while [ $# -gt 0 ]; do
         --component)
         component="$2"
         shift
-        ;;
-        --with-vcpkg)
-        build_with_vcpkg="yes"
         ;;
         --silent)
         silent="yes"
@@ -121,6 +111,7 @@ if [ "x$build_dir" != "x" ]; then
 else
     cd ../
     BUILD_DIR="$(pwd)/3rdParty/android"
+    THIRD_PARTY="$(pwd)/3rdParty"
     cd android/
 fi
 
@@ -137,49 +128,26 @@ if [ "${doclean}" = "yes" ]; then
     echo "cleaning downloaded cache files"
     rm -f /tmp/ndk_${NDK_VERSION}.zip
     rm -f /tmp/ndk_armv6_${NDK_ARMV6_VERSION}.zip
-    rm -f /tmp/openssl_${OPENSSL_VERSION}.tgz
-    rm -f /tmp/curl_${CURL_VERSION}.tgz
 fi
 
 if [ "${silent}" = "yes" ]; then
     export STDOUT_TARGET="/dev/null"
 fi
 
-export NDK_FLAGFILE="$PREFIX/NDK-${NDK_VERSION}-${REV}_done"
-export NDK_ARMV6_FLAGFILE="$PREFIX/NDK-${NDK_ARMV6_VERSION}-armv6-${ARMV6_REV}_done"
-export NDK_ROOT=$BUILD_DIR/android-ndk-r${NDK_VERSION}
-export NDK_ARMV6_ROOT=$BUILD_DIR/android-ndk-r${NDK_ARMV6_VERSION}
-export OPENSSL_SRC=$BUILD_DIR/openssl-${OPENSSL_VERSION}
-export CURL_SRC=$BUILD_DIR/curl-${CURL_VERSION}
+. $(pwd)/ndk_common.sh
+. $(pwd)/../3rdParty/vcpkg_ports/vcpkg_link.sh
+export NDK_FLAGFILE="$PREFIX/NDK-${NDK_VERSION}_done"
+export NDK_ARMV6_FLAGFILE="$PREFIX/NDK-${NDK_ARMV6_VERSION}-armv6_done"
 export VCPKG_ROOT="$BUILD_DIR/vcpkg"
 export ANDROID_TC=$PREFIX
 export VERBOSE=$verbose
 export CI=$ci
-export BUILD_WITH_VCPKG=$build_with_vcpkg
 
 if [ "$arch" = armv6 ]; then
-    export CURL_FLAGFILE="$PREFIX/curl-${CURL_VERSION}-${NDK_ARMV6_VERSION}-${arch}_done"
-    export OPENSSL_FLAGFILE="$PREFIX/openssl-${OPENSSL_VERSION}-${NDK_ARMV6_VERSION}-${arch}_done"
-    export ANDROID_TC_FLAGFILE="$PREFIX/ANDROID_TC_WITH_NDK-${NDK_ARMV6_VERSION}-${arch}-${ARMV6_REV}_done"
+    export ANDROID_TC_FLAGFILE="$PREFIX/ANDROID_TC_WITH_NDK-${NDK_ARMV6_VERSION}-${arch}_done"
 else
-    export CURL_FLAGFILE="$PREFIX/curl-${CURL_VERSION}-${NDK_VERSION}-${arch}_done"
-    export OPENSSL_FLAGFILE="$PREFIX/openssl-${OPENSSL_VERSION}-${NDK_VERSION}-${arch}_done"
-    export ANDROID_TC_FLAGFILE="$PREFIX/ANDROID_TC_WITH_NDK-${NDK_VERSION}-${arch}-${REV}_done"
+    export ANDROID_TC_FLAGFILE="$PREFIX/ANDROID_TC_WITH_NDK-${NDK_VERSION}-${arch}_done"
 fi
-
-createNDKFolder()
-{
-    rm -rf "$BUILD_DIR/android-ndk-r${NDK_VERSION}"
-    wget -c --no-verbose -O /tmp/ndk_${NDK_VERSION}.zip https://dl.google.com/android/repository/android-ndk-r${NDK_VERSION}-linux-x86_64.zip
-    unzip -qq /tmp/ndk_${NDK_VERSION}.zip -d $BUILD_DIR
-}
-
-createNDKARMV6Folder()
-{
-    rm -rf "$BUILD_DIR/android-ndk-r${NDK_ARMV6_VERSION}"
-    wget -c --no-verbose -O /tmp/ndk_armv6_${NDK_ARMV6_VERSION}.zip https://dl.google.com/android/repository/android-ndk-r${NDK_ARMV6_VERSION}-linux-x86_64.zip
-    unzip -qq /tmp/ndk_armv6_${NDK_ARMV6_VERSION}.zip -d $BUILD_DIR
-}
 
 if [ ! -e "${NDK_FLAGFILE}" ]; then
     createNDKFolder
@@ -202,8 +170,6 @@ fi
 if [ ! -e "${ANDROID_TC_FLAGFILE}" ]; then
     rm -rf "${PREFIX}/${arch}"
     echo delete "${PREFIX}/${arch}"
-    rm -rf "${OPENSSL_FLAGFILE}"
-    rm -rf "${CURL_FLAGFILE}"
     touch ${ANDROID_TC_FLAGFILE}
 fi
 
@@ -211,101 +177,66 @@ if [ $arch != "armv6" -a ! -d ${PREFIX}/${arch} ]; then
     mkdir -p ${PREFIX}/${arch}
 fi
 
-if [ $build_with_vcpkg = "no" ]; then
-
-    if [ ! -e "${OPENSSL_FLAGFILE}" ]; then
-        rm -rf "$BUILD_DIR/openssl-${OPENSSL_VERSION}"
-        wget -c --no-verbose -O /tmp/openssl_${OPENSSL_VERSION}.tgz https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz
-        tar xzf /tmp/openssl_${OPENSSL_VERSION}.tgz --directory=$BUILD_DIR
-    fi
-
-    if [ ! -e "${CURL_FLAGFILE}" ]; then
-        rm -rf "$BUILD_DIR/curl-${CURL_VERSION}"
-        wget -c --no-verbose -O /tmp/curl_${CURL_VERSION}.tgz https://curl.haxx.se/download/curl-${CURL_VERSION}.tar.gz
-        tar xzf /tmp/curl_${CURL_VERSION}.tgz --directory=$BUILD_DIR
-    fi
-fi
-
-packegesToInstall()
-{
-    pkgs="rappture curl[core,openssl]"
-    echo $(packegesList $1 $pkgs)
-}
-
-packegesList()
+getTripletName()
 {
     arch=$1
-    shift
-    list_pkgs=""
-    while [ $# -gt 0 ]; do
-        if [ $arch = "armv6" ]; then
-            list_pkgs="$list_pkgs $1:armv6-android"
-        fi
-        if [ $arch = "arm" ]; then
-            list_pkgs="$list_pkgs $1:arm-android"
-        fi
-        if [ $arch = "neon" ]; then
-            list_pkgs="$list_pkgs $1:arm-neon-android"
-        fi
-        if [ $arch = "arm64" ]; then
-            list_pkgs="$list_pkgs $1:arm64-android"
-        fi
-        if [ $arch = "x86" ]; then
-            list_pkgs="$list_pkgs $1:x86-android"
-        fi
-        if [ $arch = "x86_64" ]; then
-            list_pkgs="$list_pkgs $1:x64-android"
-        fi
-        shift
-    done
-    echo $list_pkgs
-}
-
-if [ $build_with_vcpkg = "yes" ]; then
-    export XDG_CACHE_HOME=$cache_dir/vcpkgcache/
-    vcpkg_flags="--overlay-triplets=$vcpkg_ports_dir/triplets/default --clean-after-build"
-    if [ ! -d "$VCPKG_ROOT" ]; then
-        mkdir -p $BUILD_DIR
-        git -C $BUILD_DIR clone https://github.com/microsoft/vcpkg
-    fi
-    if [ ! -e /tmp/vcpkg_updated ]; then
-        git -C $VCPKG_ROOT reset --hard
-        git -C $VCPKG_ROOT pull
-        $VCPKG_ROOT/bootstrap-vcpkg.sh
-        touch /tmp/vcpkg_updated
-    fi
+    triplet_name=""
     if [ $arch = "armv6" ]; then
-        export ANDROID_NDK_HOME=$NDK_ARMV6_ROOT
-
-        $VCPKG_ROOT/vcpkg install $(packegesToInstall $arch) $vcpkg_flags
+        triplet_name="armv6-android"
     fi
     if [ $arch = "arm" ]; then
-        export ANDROID_NDK_HOME=$NDK_ROOT
-
-        $VCPKG_ROOT/vcpkg install $(packegesToInstall $arch) $vcpkg_flags
+        triplet_name="arm-android"
     fi
-    if [ $arch = "arm" ]; then
-        export ANDROID_NDK_HOME=$NDK_ROOT
-
-        $VCPKG_ROOT/vcpkg install $(packegesToInstall neon) $vcpkg_flags
+    if [ $arch = "neon" ]; then
+        triplet_name="arm-neon-android"
     fi
     if [ $arch = "arm64" ]; then
-        export ANDROID_NDK_HOME=$NDK_ROOT
-
-        $VCPKG_ROOT/vcpkg install $(packegesToInstall $arch) $vcpkg_flags
+        triplet_name="arm64-android"
     fi
     if [ $arch = "x86" ]; then
-        export ANDROID_NDK_HOME=$NDK_ROOT
-
-        $VCPKG_ROOT/vcpkg install $(packegesToInstall $arch) $vcpkg_flags
+        triplet_name="x86-android"
     fi
     if [ $arch = "x86_64" ]; then
-        export ANDROID_NDK_HOME=$NDK_ROOT
-
-        $VCPKG_ROOT/vcpkg install $(packegesToInstall $arch) $vcpkg_flags
+        triplet_name="x64-android"
     fi
 
-    $VCPKG_ROOT/vcpkg upgrade --no-dry-run
+    echo $triplet_name
+}
+
+if [ $ci = "yes" ]; then
+    triplets_setup="ci"
+else
+    triplets_setup="default"
+fi
+manifest_dir=$THIRD_PARTY/vcpkg_ports/configs/$component
+if [ $component = "apps" ]; then
+    manifest_dir=$manifest_dir/android
+fi
+manifests="--x-manifest-root=$manifest_dir --x-install-root=$VCPKG_ROOT/installed/"
+vcpkg_overlay="--overlay-ports=$vcpkg_ports_dir/ports --overlay-triplets=$vcpkg_ports_dir/triplets/$triplets_setup"
+vcpkg_flags="$vcpkg_overlay  --feature-flags=versions --clean-after-build"
+if [ ! -d "$VCPKG_ROOT" ]; then
+    mkdir -p $BUILD_DIR
+    git -C $BUILD_DIR clone $VCPKG_LINK
+fi
+if [ ! -e /tmp/vcpkg_updated ]; then
+    git -C $VCPKG_ROOT pull
+    $VCPKG_ROOT/bootstrap-vcpkg.sh
+    touch /tmp/vcpkg_updated
+fi
+if [ $arch = "armv6" ]; then
+    export ANDROID_NDK_HOME=$NDK_ARMV6_ROOT
+
+    $VCPKG_ROOT/vcpkg install $manifests $vcpkg_flags --triplet=$(getTripletName $arch)
+elif [ $arch = "arm" ]; then
+    export ANDROID_NDK_HOME=$NDK_ROOT
+
+    $VCPKG_ROOT/vcpkg install $manifests $vcpkg_flags --triplet=$(getTripletName neon)
+    $VCPKG_ROOT/vcpkg install $manifests $vcpkg_flags --triplet=$(getTripletName $arch)
+else
+    export ANDROID_NDK_HOME=$NDK_ROOT
+
+    $VCPKG_ROOT/vcpkg install $manifests $vcpkg_flags --triplet=$(getTripletName $arch)
 fi
 
 vcpkgDir()
@@ -313,7 +244,7 @@ vcpkgDir()
     arch=$1
     shift
     vcpkg_dir="$VCPKG_ROOT/installed"
-    
+
     if [ $arch = "armv6" ]; then
         vcpkg_dir="$vcpkg_dir/armv6-android"
     elif [ $arch = "arm" ]; then
@@ -329,20 +260,13 @@ vcpkgDir()
     echo $vcpkg_dir
 }
 
-list_apps_name="boinc_gahp uc2 ucn multi_thread sleeper worker wrapper"
-
-if [ $build_with_vcpkg = "yes" ]; then
-    list_apps_name="$list_apps_name wrappture_example fermi"
-fi
+list_apps_name="boinc_gahp uc2 ucn multi_thread sleeper worker wrapper wrappture_example fermi"
 
 NeonTest()
 {
     while [ $# -gt 0 ]; do
         echo "NeonTest: readelf -A" "$1"
-        vcpkg_dir_search=""
-        if [ $build_with_vcpkg = "yes" ]; then
-            vcpkg_dir_search=$(vcpkgDir $arch)
-        fi
+        vcpkg_dir_search=$(vcpkgDir $arch)
         if [ $(readelf -A $(find $ANDROID_TC/${arch} "../samples" $vcpkg_dir_search -type f -name "$1") | grep -i neon | head -c1 | wc -c) -ne 0 ]; then
             echo $(readelf -A $(find $ANDROID_TC/${arch} "../samples" $vcpkg_dir_search -type f -name "$1") | grep -i neon)
             echo [ERROR] "$1" contains neon optimization
@@ -366,10 +290,7 @@ Armv6Test()
 {
     while [ $# -gt 0 ]; do
         echo "Armv6Test: readelf -A" "$1"
-        vcpkg_dir_search=""
-        if [ $build_with_vcpkg = "yes" ]; then
-            vcpkg_dir_search=$(vcpkgDir $arch)
-        fi
+        vcpkg_dir_search=$(vcpkgDir $arch)
         if [ $(readelf -A $(find $ANDROID_TC/armv6 "BOINC/app/src/main/assets/armeabi" "../samples" $vcpkg_dir_search -type f -name "$1") | grep -i -E "Tag_CPU_arch: (v6|v5TE)" | head -c1 | wc -c) -eq 0 ]; then
             echo $(readelf -A $(find $ANDROID_TC/armv6 "BOINC/app/src/main/assets/armeabi" "../samples" $vcpkg_dir_search -type f -name "$1") | grep -i "Tag_CPU_arch:")
             echo [ERROR] "$1" is not armv6 cpu arch
@@ -408,13 +329,9 @@ RenameAllApps()
                 ../samples/sleeper/ sleeper
                 ../samples/worker/ worker
                 ../samples/wrapper/ wrapper
-                "
-if [ $build_with_vcpkg = "yes" ]; then
-    list_apps="$list_apps
                 ../samples/wrappture/ wrappture_example
                 ../samples/wrappture/ fermi
                 "
-fi
 
     RenameApp $1 $list_apps
 }
@@ -435,8 +352,6 @@ case "$arch" in
         ./build_androidtc_armv6.sh
         case "$component" in
             "client")
-                ./build_openssl_armv6.sh
-                ./build_curl_armv6.sh
                 ./build_boinc_armv6.sh
                 NeonTestClient
                 Armv6TestClient
@@ -449,8 +364,6 @@ case "$arch" in
                 exit 0
             ;;
             "apps")
-                ./build_openssl_armv6.sh
-                ./build_curl_armv6.sh
                 ./build_libraries_armv6.sh
                 ./build_example_armv6.sh
                 NeonTestLibs
@@ -471,8 +384,6 @@ case "$arch" in
     "arm")
         case "$component" in
             "client")
-                ./build_openssl_arm.sh
-                ./build_curl_arm.sh
                 ./build_boinc_arm.sh
                 NeonTestClient
                 exit 0
@@ -483,8 +394,6 @@ case "$arch" in
                 exit 0
             ;;
             "apps")
-                ./build_openssl_arm.sh
-                ./build_curl_arm.sh
                 ./build_libraries_arm.sh
                 ./build_example_arm.sh
                 NeonTestLibs
@@ -503,8 +412,6 @@ case "$arch" in
     "arm64")
         case "$component" in
             "client")
-                ./build_openssl_arm64.sh
-                ./build_curl_arm64.sh
                 ./build_boinc_arm64.sh
                 exit 0
             ;;
@@ -513,8 +420,6 @@ case "$arch" in
                 exit 0
             ;;
             "apps")
-                ./build_openssl_arm64.sh
-                ./build_curl_arm64.sh
                 ./build_libraries_arm64.sh
                 ./build_example_arm64.sh
                 if [ "$ci" = "yes" ]; then
@@ -531,8 +436,6 @@ case "$arch" in
     "x86")
         case "$component" in
             "client")
-                ./build_openssl_x86.sh
-                ./build_curl_x86.sh
                 ./build_boinc_x86.sh
                 exit 0
             ;;
@@ -541,8 +444,6 @@ case "$arch" in
                 exit 0
             ;;
             "apps")
-                ./build_openssl_x86.sh
-                ./build_curl_x86.sh
                 ./build_libraries_x86.sh
                 ./build_example_x86.sh
                 if [ "$ci" = "yes" ]; then
@@ -559,8 +460,6 @@ case "$arch" in
     "x86_64")
         case "$component" in
             "client")
-                ./build_openssl_x86_64.sh
-                ./build_curl_x86_64.sh
                 ./build_boinc_x86_64.sh
                 exit 0
             ;;
@@ -569,8 +468,6 @@ case "$arch" in
                 exit 0
             ;;
             "apps")
-                ./build_openssl_x86_64.sh
-                ./build_curl_x86_64.sh
                 ./build_libraries_x86_64.sh
                 ./build_example_x86_64.sh
                 if [ "$ci" = "yes" ]; then

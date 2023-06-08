@@ -28,13 +28,10 @@ export VCPKG_DIR=$VCPKG_ROOT/installed/arm64-android
 CONFIG_FLAGS=""
 CONFIG_LDFLAGS=""
 
-if [ $BUILD_WITH_VCPKG = "yes" ]; then
-    CONFIG_LDFLAGS="-L$VCPKG_DIR/lib"
-    CONFIG_FLAGS="--with-libcurl=$VCPKG_DIR --with-ssl=$VCPKG_DIR --enable-vcpkg"
-else
-    CONFIG_FLAGS="--with-ssl=$TCINCLUDES"
-    CONFIG_LDFLAGS="-L$TCSYSROOT/usr/lib -L$TCINCLUDES/lib"
-fi
+CONFIG_LDFLAGS="-L$VCPKG_DIR/lib"
+CONFIG_FLAGS="--with-ssl=$VCPKG_DIR --with-libcurl=$VCPKG_DIR"
+export _libcurl_pc="$VCPKG_DIR/lib/pkgconfig/libcurl.pc"
+
 
 export PATH="$TCBINARIES:$TCINCLUDES/bin:$PATH"
 export CC=aarch64-linux-android21-clang
@@ -61,7 +58,7 @@ fi
 
 if [ -n "$COMPILEBOINC" ]; then
     cd "$BOINC"
-    echo "===== building BOINC for arm64 from $PWD ====="    
+    echo "===== building BOINC for arm64 from $PWD ====="
     if [ -n "$MAKECLEAN" ] && [ -f "Makefile" ]; then
         if [ "$VERBOSE" = "no" ]; then
             make distclean 1>$STDOUT_TARGET 2>&1
@@ -71,9 +68,6 @@ if [ -n "$COMPILEBOINC" ]; then
     fi
     if [ -n "$CONFIGURE" ]; then
         ./_autosetup
-        if [ $BUILD_WITH_VCPKG = "yes" ]; then
-            export _libcurl_pc="$VCPKG_DIR/lib/pkgconfig/libcurl.pc"
-        fi
         ./configure --host=aarch64-linux --with-boinc-platform="aarch64-android-linux-gnu" --with-boinc-alt-platform="arm-android-linux-gnu" $CONFIG_FLAGS --disable-server --disable-manager --disable-shared --enable-static
     fi
     echo MAKE_FLAGS=$MAKE_FLAGS
@@ -82,7 +76,7 @@ if [ -n "$COMPILEBOINC" ]; then
 
     echo "Stripping Binaries"
     cd stage/usr/local/bin
-    aarch64-linux-android-strip *
+    llvm-strip *
     cd ../../../../
 
     echo "Copy Assets"

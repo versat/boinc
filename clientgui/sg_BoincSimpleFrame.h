@@ -123,7 +123,7 @@ public:
     void OnRefreshView( CFrameEvent& event );
     void OnNotification( CFrameEvent& event );
     void OnEventLog(wxCommandEvent& event);
-    
+
 	void SetMsgsDlgOpen(CDlgMessages* newDlgPtr) { dlgMsgsPtr = newDlgPtr; }
     bool isMessagesDlgOpen() { return (dlgMsgsPtr != NULL); }
 
@@ -153,6 +153,7 @@ protected:
 
 private:
     CDlgMessages* dlgMsgsPtr;
+    wxBoxSizer* mainSizer;
 
     DECLARE_EVENT_TABLE()
 };

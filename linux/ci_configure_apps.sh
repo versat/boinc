@@ -6,13 +6,14 @@ if [ ! -d "linux" ]; then
     exit 1
 fi
 
-CACHE_DIR="$PWD/3rdParty/buildCache/linux"
 BUILD_DIR="$PWD/3rdParty/linux"
 VCPKG_ROOT="$BUILD_DIR/vcpkg"
 export VCPKG_DIR="$VCPKG_ROOT/installed/x64-linux"
 
-linux/update_vcpkg.sh
+linux/update_vcpkg_apps.sh
 
-chmod +x "$VCPKG_DIR/share/curl/curl-config"
-export _libcurl_config="$VCPKG_DIR/share/curl/curl-config"
-./configure --enable-vcpkg --with-libcurl=$VCPKG_DIR --with-ssl=$VCPKG_DIR --enable-apps --disable-server --disable-client --disable-manager
+export _libcurl_pc="$VCPKG_DIR/lib/pkgconfig/libcurl.pc"
+export PKG_CONFIG_PATH=$VCPKG_DIR/lib/pkgconfig/
+export X_EXTRA_LIBS="-I$VCPKG_DIR/include $(pkg-config --libs freeglut)"
+
+./configure --with-libcurl=$VCPKG_DIR --with-ssl=$VCPKG_DIR --enable-apps --enable-apps-vcpkg --enable-apps-vbox --enable-apps-gui --disable-server --disable-client --disable-manager CPPFLAGS="-I$VCPKG_DIR/include"

@@ -18,6 +18,8 @@
  */
 package edu.berkeley.boinc.rpc
 
+import android.os.Build.VERSION
+import android.os.Build.VERSION_CODES
 import android.os.Parcel
 import android.os.Parcelable
 import androidx.core.os.ParcelCompat.readBoolean
@@ -114,7 +116,13 @@ data class Project(
                     attachedViaAcctMgr = readBoolean(parcel), detachWhenDone = readBoolean(parcel),
                     ended = readBoolean(parcel), trickleUpPending = readBoolean(parcel),
                     noCPUPref = readBoolean(parcel), noCUDAPref = readBoolean(parcel), noATIPref = readBoolean(parcel),
-                    guiURLs = arrayListOf<GuiUrl?>().apply { parcel.readList(this as MutableList<*>, GuiUrl::class.java.classLoader) })
+                    guiURLs = arrayListOf<GuiUrl?>().apply { if (VERSION.SDK_INT >= VERSION_CODES.TIRAMISU) {
+                        parcel.readList(this as MutableList<GuiUrl?>, GuiUrl::class.java.classLoader, GuiUrl::class.java)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        parcel.readList(this as MutableList<*>, GuiUrl::class.java.classLoader)
+                    }
+                    })
 
     override fun equals(other: Any?): Boolean {
         if (this === other) {
@@ -147,8 +155,9 @@ data class Project(
                 teamName == other.teamName && hostVenue == other.hostVenue && guiURLs == other.guiURLs
     }
 
-    override fun hashCode() = Objects.hash(masterURL.toLowerCase(Locale.ROOT), projectDir, resourceShare,
-            projectName, userName.toLowerCase(Locale.ROOT), teamName, hostVenue, hostId, guiURLs,
+    override fun hashCode() = Objects.hash(
+            masterURL.lowercase(Locale.ROOT), projectDir, resourceShare,
+            projectName, userName.lowercase(Locale.ROOT), teamName, hostVenue, hostId, guiURLs,
             userTotalCredit, userExpAvgCredit, hostTotalCredit, hostExpAvgCredit, diskUsage,
             noOfRPCFailures, masterFetchFailures, minRPCTime, downloadBackoff, uploadBackoff,
             cpuShortTermDebt, cpuLongTermDebt, cpuBackoffTime, cpuBackoffInterval, cudaDebt,
@@ -250,6 +259,7 @@ data class Project(
         const val NO_CPU_PREF = "no_cpu_pref"
         const val NO_CUDA_PREF = "no_cuda_pref"
         const val NO_ATI_PREF = "no_ati_pref"
+        const val DISK_USAGE = "disk_usage"
     }
 
     companion object {

@@ -27,13 +27,9 @@ export VCPKG_DIR=$VCPKG_ROOT/installed/armv6-android
 CONFIG_FLAGS=""
 CONFIG_LDFLAGS=""
 
-if [ $BUILD_WITH_VCPKG = "yes" ]; then
-    CONFIG_LDFLAGS="-L$VCPKG_DIR/lib"
-    CONFIG_FLAGS="--with-libcurl=$VCPKG_DIR --with-ssl=$VCPKG_DIR --enable-vcpkg"
-else
-    CONFIG_FLAGS="--with-ssl=$TCINCLUDES"
-    CONFIG_LDFLAGS="-L$TCSYSROOT/usr/lib -L$TCINCLUDES/lib"
-fi
+CONFIG_LDFLAGS="-L$VCPKG_DIR/lib"
+CONFIG_FLAGS="--with-ssl=$VCPKG_DIR --with-libcurl=$VCPKG_DIR"
+export _libcurl_pc="$VCPKG_DIR/lib/pkgconfig/libcurl.pc"
 
 export PATH="$TCBINARIES:$TCINCLUDES/bin:$PATH"
 export CC=arm-linux-androideabi-clang
@@ -77,6 +73,8 @@ if [ -n "$COMPILEBOINC" ]; then
             export _libcurl_pc="$VCPKG_DIR/lib/pkgconfig/libcurl.pc"
         fi
         ./configure --host=armv6-linux --with-boinc-platform="arm-android-linux-gnu" $CONFIG_FLAGS --disable-server --disable-manager --disable-shared --enable-static --disable-largefile
+        sed -e "s%^CLIENTLIBS *= *.*$%CLIENTLIBS = -lm $STDCPPTC%g" client/Makefile > client/Makefile.out
+        mv client/Makefile.out client/Makefile
     fi
     echo MAKE_FLAGS=$MAKE_FLAGS
     make $MAKE_FLAGS
