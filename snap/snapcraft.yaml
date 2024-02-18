@@ -1,6 +1,6 @@
 name: boinc
 base: core22
-version: "7.23.0"
+version: "7.25.0"
 summary: BOINC lets you help cutting-edge science research using your computer.
 description: |
   BOINC lets you help cutting-edge science research using your computer. The BOINC app, running on your computer, downloads scientific computing jobs and runs them invisibly in the background. It's easy and safe.
@@ -44,6 +44,7 @@ slots:
 parts:
   boinc:
     build-packages:
+    - autopoint
     - libftgl-dev
     - freeglut3-dev
     - libnotify-dev
@@ -113,6 +114,8 @@ parts:
       pip install -U --user pip
       pip install --user ninja
       ninja --version
+
+      pip install --user jinja2
 
       export CFLAGS=-w
       export CMAKE_C_FLAGS=-w

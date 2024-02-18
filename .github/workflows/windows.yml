@@ -19,11 +19,11 @@ name: Windows
 on:
   push:
     branches: [ master, 'client_release/**' ]
-    tags: [ 'client_release/**' ]
+    tags: [ 'client_release/**', 'vboxwrapper/**', 'wrapper/**' ]
   pull_request:
     branches: [ master ]
   schedule:
-    - cron:  '0 0 * * 0'
+    - cron:  '0 0 * * *'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
