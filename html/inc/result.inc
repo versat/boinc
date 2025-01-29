@@ -82,6 +82,9 @@ function app_version_string($result) {
         return anon_platform_string($result, tra("Apple GPU"));
     }
     $av = get_app_version($id);
+    if (!$av) {
+        return "missing app version $id";
+    }
     $app = get_app($av->appid);
     $platform = get_platform($av->platformid);
     $n = $app->user_friendly_name;
@@ -723,7 +726,7 @@ function show_result($result, $show_outfile_links=false) {
     }
     if ($show_outfile_links && $result->outcome == 1) {
         $fanout = parse_config(get_config(), "<uldl_dir_fanout>");
-        $names = get_outfile_names($result);
+        $names = get_outfile_phys_names($result);
         $i = 0;
         $x = "";
         foreach ($names as $name) {
@@ -845,6 +848,5 @@ function result_navigation($info, $where_clause) {
     return $x;
 }
 
-$cvs_version_tracker[]="\$Id$";  //Generated automatically - do not edit
 
 ?>

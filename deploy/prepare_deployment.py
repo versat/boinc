@@ -1,6 +1,6 @@
 # This file is part of BOINC.
 # http://boinc.berkeley.edu
-# Copyright (C) 2023 University of California
+# Copyright (C) 2024 University of California
 #
 # BOINC is free software; you can redistribute it and/or modify it
 # under the terms of the GNU Lesser General Public License
@@ -25,7 +25,11 @@ linux_client_list = [
     './client/scripts/boinc-client.service',
     './client/scripts/boinc-client',
     './client/scripts/boinc.bash',
-    './client/scripts/boinc-client.conf'
+    './client/scripts/boinc-client.conf',
+    './packages/deb/*',
+    './packages/generic/36x11-common_xhost-boinc',
+    'locale/*/*.mo',
+    './win_build/installerv2/redist/all_projects_list.xml'
 ]
 
 linux_apps_list = [
@@ -43,13 +47,16 @@ linux_apps_list = [
     './samples/openclapp/openclapp',
     './samples/wrappture/wrappture_example',
     './samples/wrappture/fermi',
-    './samples/sporadic/sporadic'
+    './samples/sporadic/sporadic',
+    './samples/docker_wrapper/docker_wrapper',
 ]
 
 linux_manager_list = [
     './clientgui/boincmgr',
     './clientgui/skins',
     './clientgui/res/boinc.desktop',
+    './clientgui/res/boinc.png',
+    './clientgui/res/boinc.svg',
     'locale/*/*.mo',
 ]
 
@@ -69,7 +76,9 @@ mingw_apps_vcpkg_list = [
     './samples/wrapper/wrapper*.exe',
     './samples/wrappture/wrappture_example.exe',
     './samples/wrappture/fermi.exe',
-    './samples/sporadic/sporadic.exe'
+    './samples/sporadic/sporadic.exe',
+    './samples/wsl_wrapper/wsl_wrapper.exe',
+    './samples/docker_wrapper/docker_wrapper.exe',
 ]
 
 android_manager_generic_list = [
@@ -164,6 +173,8 @@ windows_apps_list = [
     './win_build/Build/x64/Release/test*.exe',
     './win_build/Build/x64/Release/wrappture*.exe',
     './win_build/Build/x64/Release/crypt_prog.exe',
+    './win_build/Build/x64/Release/wsl_wrapper.exe',
+    './win_build/Build/x64/Release/docker_wrapper.exe',
     './win_build/Build/ARM64/Release/htmlgfx*.exe',
     './win_build/Build/ARM64/Release/wrapper*.exe',
     './win_build/Build/ARM64/Release/vboxwrapper*.exe',
@@ -176,7 +187,9 @@ windows_apps_list = [
     './win_build/Build/ARM64/Release/multi_thread*.exe',
     './win_build/Build/ARM64/Release/test*.exe',
     './win_build/Build/ARM64/Release/wrappture*.exe',
-    './win_build/Build/ARM64/Release/crypt_prog.exe'
+    './win_build/Build/ARM64/Release/crypt_prog.exe',
+    './win_build/Build/ARM64/Release/wsl_wrapper.exe',
+    './win_build/Build/ARM64/Release/docker_wrapper.exe',
 ]
 
 windows_client_list = [
@@ -200,6 +213,19 @@ windows_manager_list = [
     './win_build/Build/ARM64/Release/boincmgr.exe',
     './clientgui/skins',
     'locale/*/*.mo',
+]
+
+windows_installer_list = [
+    './win_build/Build/x64/Release/boinccas.dll',
+    './win_build/Build/ARM64/Release/boinccas.dll',
+    './win_build/Build/x64/Release/installer_icon.exe',
+    './win_build/Build/ARM64/Release/installer_icon.exe',
+    './win_build/Build/x64/Release/installer.exe',
+    './win_build/Build/ARM64/Release/installer.exe',
+    './win_build/Build/x64/Release/boinc.msi',
+    './win_build/Build/ARM64/Release/boinc.msi',
+    './win_build/Build/x64/Release/installer_setup.exe',
+    './win_build/Build/ARM64/Release/installer_setup.exe',
 ]
 
 wasm_client_list = [
@@ -288,12 +314,13 @@ logs_list = [
     'parts/boinc/build/3rdParty/linux/vcpkg/buildtrees/*.log',
     'android/BOINC/app/build/reports/',
     'mac_build/xcodebuild_*.log',
+    'build/*.log',
 ]
 
 def prepare_7z_archive(archive_name, target_directory, files_list):
     os.makedirs(target_directory, exist_ok=True)
     archive_path = os.path.join(target_directory, archive_name + '.7z')
-    command = '7z a -t7z -r -mx=9 -xr!*.dSYM ' + archive_path + ' ' + " ".join(files_list)
+    command = '7z a -t7z -r -mx=9 -xr!*.dSYM -xr!Makefile -xr!Makefile.* ' + archive_path + ' ' + " ".join(files_list)
     os.system(command)
 
 def help():
@@ -358,6 +385,9 @@ def prepare_win_client(target_directory):
 def prepare_win_manager(target_directory):
     prepare_7z_archive('win_manager', target_directory, windows_manager_list)
 
+def prepare_win_installer(target_directory):
+    prepare_7z_archive('win_installer', target_directory, windows_installer_list)
+
 def prepare_wasm_client(target_directory):
     prepare_7z_archive('wasm_client', target_directory, wasm_client_list)
 
@@ -398,6 +428,7 @@ boinc_types = {
     'win_apps': prepare_win_apps,
     'win_client': prepare_win_client,
     'win_manager': prepare_win_manager,
+    'win_installer': prepare_win_installer,
     'wasm_client': prepare_wasm_client,
     'wasm_client-debug': prepare_wasm_client_debug,
     'linux_snap': prepare_linux_snap,

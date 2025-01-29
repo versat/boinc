@@ -91,9 +91,21 @@ if (!defined('NO_STATS')) {
 if (!defined('NO_GLOBAL_PREFS')) {
     define('NO_GLOBAL_PREFS', false);
 }
-if (!defined('USER_HOME')) {
-    define('USER_HOME', 'home.php');
+
+// the 'home page' of the logged-in user.
+// go here after login, account creation, team operations, etc.
+//
+if (!defined('HOME_PAGE')) {
+    define('HOME_PAGE', 'home.php');
 }
+
+// the page showing another user ('userid' arg).
+// Link to here wherever we show a user name.
+//
+if (!defined('SHOW_USER_PAGE')) {
+    define('SHOW_USER_PAGE', 'show_user.php');
+}
+
 if (!defined('POST_MAX_LINKS')) {
     define('POST_MAX_LINKS', 0);
 }
@@ -102,6 +114,9 @@ if (!defined('DARK_MODE')) {
 }
 if (!defined('VALIDATE_EMAIL_TO_POST')) {
     define('VALIDATE_EMAIL_TO_POST', false);
+}
+if (!defined('UNIQUE_USER_NAME')) {
+    define('UNIQUE_USER_NAME', false);
 }
 
 // don't allow anything between .php and ? in URL
@@ -151,7 +166,11 @@ function send_cookie($name, $value, $permanent, $ops=false) {
         $path .= "_ops/";
     }
     $expire = $permanent?time()+3600*24*365:0;
-    setcookie($name, $value, $expire, $path);
+    setcookie($name, $value, $expire, $path,
+        '',
+        is_https(),     // if this page is secure, make cookie secure
+        true            // httponly; no JS access
+    );
 }
 
 function clear_cookie($name, $ops=false) {
@@ -343,7 +362,6 @@ EOT;
         $body_attrs .= ' style="padding-top:70px"';
     }
     echo "<body $body_attrs>";
-    display_cvs_versions();
     echo '<div class="container-fluid">
     ';
 
@@ -381,14 +399,6 @@ function page_tail(
         </html>
     ';
 }
-}
-
-function display_cvs_versions(){
-    global $cvs_version_tracker;
-    echo "\n<!-- SVN VERSIONS -->\n";
-    for ($i=0;$i<sizeof($cvs_version_tracker);$i++) {
-        echo "<!-- ".$cvs_version_tracker[$i]." -->\n";
-    }
 }
 
 function db_error_page() {
@@ -518,6 +528,8 @@ define('NAME_ATTRS', 'class="text-right " style="padding-right:12px"');
 define('VALUE_ATTRS', 'style="padding-left:12px"');
 define('VALUE_ATTRS_ERR', 'class="danger" style="padding-left:12px"');
 
+// a table row with 2 columns, with the left on right-aligned
+
 function row2($x, $y, $show_error=false, $lwidth='40%') {
     if ($x==="") $x="<br>";
     if ($y==="") $y="<br>";
@@ -529,11 +541,15 @@ function row2($x, $y, $show_error=false, $lwidth='40%') {
     ";
 }
 
-function row2_init($x, $y, $lwidth='40%') {
-    echo '<tr>
-        <td class="text-right " width="'.$lwidth.'"  style="padding-right: 20px;">'.$x.'</td>
-        <td '.VALUE_ATTRS.'>'.$y.'
-    ';
+// output the first part of row2();
+// then write the content, followed by </td></tr>
+
+function row2_init($x, $lwidth='40%') {
+    echo sprintf('<tr>
+        <td width="%s" %s>%s</td>
+        <td %s>',
+        $lwidth, NAME_ATTRS, $x, VALUE_ATTRS
+    );
 }
 
 function row2_plain($x, $y) {
@@ -544,10 +560,13 @@ function rowify($string) {
     echo "<tr><td>$string</td></tr>";
 }
 
-function row_array($x) {
+function row_array($x, $attrs=null) {
     echo "<tr>\n";
+    $i = 0;
     foreach ($x as $h) {
-        echo "<td>$h</td>\n";
+        $a = $attrs?$attrs[$i]:"";
+        echo "<td $a>$h</td>\n";
+        $i++;
     }
     echo "</tr>\n";
 }
@@ -872,10 +891,7 @@ function strip_bbcode($string){
 }
 
 function current_url() {
-    $url = "http";
-    if (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] == "on") {
-        $url .= "s";
-    }
+    $url = is_https()?'https':'http';
     $url .= "://";
     $url .= $_SERVER['SERVER_NAME'];
     $url .= ":".$_SERVER['SERVER_PORT'];
@@ -889,24 +905,46 @@ function current_url() {
     return $url;
 }
 
-// Show a single link formatted to look like a button.
-// @param url The destination URL of the button
-// @param text The text to display on the button
-// @param desc The title of the destination - typically used as a popup
-// @param class The optional CSS class of the button. Defaults to a standard button
-// @params extra Additional text in href tag
+// return style for a button
+// the colors for bootstrap's btn-success are almost illegible;
+// the green is too light.  Use a darker green.
 //
-
+function button_style($color='green', $font_size=null) {
+    $fs = '';
+    if ($font_size) {
+        $fs = sprintf('; font-size:%dpx', $font_size);
+    }
+    $c = 'seagreen';
+    if ($color == 'blue') $c = 'steelblue';
+    return sprintf(
+        'style="background-color:%s; color:white; text-decoration:none%s"',
+        $c, $fs
+    );
+}
+// Show a link formatted to look like a button.
+// url: the destination of the lin
+// text: The text to display on the button
+// desc: tooltip text (show on hover)
+// class: class of the button, e.g. btn
+// extra: Additional text in href tag
+//
 function button_text($url, $text, $desc=null, $class=null, $extra='') {
     if (!$desc) {
         $desc = $text;
     }
+    if (!$extra && !$class) {
+        $extra = button_style();
+    }
     if (!$class) {
-        $class = "btn-success btn-sm";
+        $class = "btn btn-sm";
     }
     return sprintf(' <a href="%s" title="%s" class="btn %s" %s>%s</a>',
         $url, $desc, $class, $extra, $text
     );
+}
+
+function button_text_small($url, $text, $desc=null) {
+    return button_text($url, $text, $desc, "btn btn-xs", button_style());
 }
 
 function show_button($url, $text, $desc=null, $class=null, $extra=null) {
@@ -916,7 +954,7 @@ function show_button($url, $text, $desc=null, $class=null, $extra=null) {
 // for places with a bunch of buttons, like forum posts
 //
 function show_button_small($url, $text, $desc=null) {
-    echo button_text($url, $text, $desc, "btn-primary btn-xs");
+    echo button_text_small($url, $text, $desc);
 }
 
 // used for showing icons
@@ -970,46 +1008,6 @@ function db_init($try_replica=false) {
         exit();
     }
     return 0;
-}
-
-// return a structure indicating whether project has non-deprecated
-// apps versions for various resource types,
-// and with a count of app versions
-//
-function get_app_types() {
-    $t = new StdClass;
-    $t->cpu = false;
-    $t->cuda = false;
-    $t->ati = false;
-    $t->intel_gpu = false;
-    $t->apple_gpu = false;
-    $t->count = 0;
-    $avs = BoincAppVersion::enum("deprecated=0");
-    foreach ($avs as $av) {
-        if (strstr($av->plan_class, "ati")) {
-            $t->ati = true;
-            $t->count++;
-        } else if (strstr($av->plan_class, "amd")) {
-            $t->ati = true;
-            $t->count++;
-        } else if (strstr($av->plan_class, "cuda")) {
-            $t->cuda = true;
-            $t->count++;
-        } else if (strstr($av->plan_class, "nvidia")) {
-            $t->cuda = true;
-            $t->count++;
-        } else if (strstr($av->plan_class, "intel_gpu")) {
-            $t->intel_gpu = true;
-            $t->count++;
-        } else if (strstr($av->plan_class, "apple_gpu")) {
-            $t->apple_gpu = true;
-            $t->count++;
-        } else {
-            $t->cpu = true;
-            $t->count++;
-        }
-    }
-    return $t;
 }
 
 // Functions to sanitize GET and POST args
@@ -1091,10 +1089,8 @@ function credit_to_gflop_hours($c) {
     return $c/(200/24);
 }
 
-function do_download($path,$name="") {
-    if (strcmp($name,"") == 0) {
-        $name=basename($path);
-    }
+function do_download($path) {
+    $name=basename($path);
     header('Content-Description: File Transfer');
     header('Content-Type: application/octet-stream');
     header('Content-Disposition: attachment; filename='.$name);
@@ -1112,7 +1108,7 @@ function do_download($path,$name="") {
 function redirect_to_secure_url() {
     if (defined('SECURE_URL_BASE')
         && strstr(SECURE_URL_BASE, "https://")
-        && empty($_SERVER['HTTPS'])
+        && !is_https()
     ) {
         Header("Location: https://".$_SERVER['HTTP_HOST'].$_SERVER['REQUEST_URI']);
         exit;
@@ -1256,6 +1252,5 @@ function check_validated_email($user) {
     }
 }
 
-$cvs_version_tracker[]="\$Id$";  //Generated automatically - do not edit
 
 ?>

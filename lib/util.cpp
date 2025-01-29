@@ -17,7 +17,6 @@
 
 #if defined(_WIN32)
 #include "boinc_win.h"
-#include "str_replace.h"
 #include "str_util.h"
 #include "win_util.h"
 #endif
@@ -63,6 +62,7 @@ extern "C" {
 #include "mfile.h"
 #include "miofile.h"
 #include "parse.h"
+#include "hostinfo.h"
 #include "util.h"
 
 using std::min;
@@ -207,9 +207,9 @@ void boinc_crash() {
 }
 
 // chdir into the given directory, and run a program there.
-// argv is set up Unix-style, i.e. argv[0] is the program name
+// Don't wait for it to exit.
+// argv is Unix-style, i.e. argv[0] is the program name
 //
-
 #ifdef _WIN32
 int run_program(
     const char* dir, const char* file, int argc, char *const argv[], HANDLE& id
@@ -238,7 +238,7 @@ int run_program(
         cmdline,
         NULL,
         NULL,
-        FALSE,
+        FALSE,  // don't inherit handles
         0,
         NULL,
         dir,
@@ -279,7 +279,152 @@ int run_program(
 }
 #endif
 
+// Run command, wait for exit.
+// Return its output as vector of lines.
+// Win: output includes stdout and stderr
+// Unix: if you want stderr too, add 2>&1 to command
+// Return error if command failed
+//
+int run_command(char *cmd, vector<string> &out) {
+    out.clear();
 #ifdef _WIN32
+    HANDLE pipe_read, pipe_write;
+    SECURITY_ATTRIBUTES sa;
+    STARTUPINFO si;
+    PROCESS_INFORMATION pi;
+
+    memset(&si, 0, sizeof(si));
+    memset(&pi, 0, sizeof(pi));
+    memset(&sa, 0, sizeof(sa));
+
+    sa.nLength = sizeof(SECURITY_ATTRIBUTES);
+    sa.bInheritHandle = TRUE;
+    sa.lpSecurityDescriptor = NULL;
+
+    if (!CreatePipe(&pipe_read, &pipe_write, &sa, 0)) return -1;
+    SetHandleInformation(pipe_read, HANDLE_FLAG_INHERIT, 0);
+
+    si.cb = sizeof(STARTUPINFO);
+    si.dwFlags |= STARTF_FORCEOFFFEEDBACK | STARTF_USESHOWWINDOW | STARTF_USESTDHANDLES;
+    si.wShowWindow = SW_HIDE;
+    si.hStdOutput = pipe_write;
+    si.hStdError = pipe_write;
+    si.hStdInput = NULL;
+
+    if (!CreateProcess(
+        NULL,
+        (LPTSTR)cmd,
+        NULL,
+        NULL,
+        TRUE,   // inherit handles
+        CREATE_NO_WINDOW,
+        NULL,
+        NULL,
+        &si,
+        &pi
+    )) {
+        return -1;
+    }
+
+    // wait for command to finish
+    //
+    WaitForSingleObject(pi.hProcess, INFINITE);
+
+    unsigned long exit_code;
+    GetExitCodeProcess(pi.hProcess, &exit_code);
+    if (exit_code) return -1;
+
+    DWORD count, nread;
+    PeekNamedPipe(pipe_read, NULL, NULL, NULL, &count, NULL);
+    if (count == 0) {
+        return 0;
+    }
+    char* buf = (char*)malloc(count+1);
+    if (!ReadFile(pipe_read, buf, count, &nread, NULL)) {
+        free(buf);
+        return -1;
+    }
+    buf[nread] = 0;
+    char* p = buf;
+    while (*p) {
+        char* q = strchr(p, '\n');
+        if (!q) break;
+        *q = 0;
+        out.push_back(string(p));
+        p = q + 1;
+    }
+    free(buf);
+#else
+#ifndef _USING_FCGI_
+    char buf[256];
+    FILE* fp = popen(cmd, "r");
+    if (!fp) {
+        fprintf(stderr, "popen() failed: %s\n", cmd);
+        return ERR_FOPEN;
+    }
+    while (fgets(buf, 256, fp)) {
+        out.push_back(buf);
+    }
+    pclose(fp);
+#endif
+#endif
+    return 0;
+}
+
+#ifdef _WIN32
+
+// run the program, and return handles to write to and read from it
+//
+int run_program_pipe(
+    char *cmd, HANDLE &write_handle, HANDLE &read_handle, HANDLE &proc_handle
+) {
+    HANDLE in_read, in_write, out_read, out_write;
+
+    SECURITY_ATTRIBUTES sa;
+    STARTUPINFO si;
+    PROCESS_INFORMATION pi;
+
+    memset(&si, 0, sizeof(si));
+    memset(&pi, 0, sizeof(pi));
+    memset(&sa, 0, sizeof(sa));
+
+    sa.nLength = sizeof(SECURITY_ATTRIBUTES);
+    sa.bInheritHandle = TRUE;
+    sa.lpSecurityDescriptor = NULL;
+
+    if (!CreatePipe(&out_read, &out_write, &sa, 0)) return -1;
+    if (!SetHandleInformation(out_read, HANDLE_FLAG_INHERIT, 0)) return -1;
+    if (!CreatePipe(&in_read, &in_write, &sa, 0)) return -1;
+    if (!SetHandleInformation(in_write, HANDLE_FLAG_INHERIT, 0)) return -1;
+
+    si.cb = sizeof(STARTUPINFO);
+    si.dwFlags |= STARTF_FORCEOFFFEEDBACK | STARTF_USESHOWWINDOW | STARTF_USESTDHANDLES;
+    si.wShowWindow = SW_HIDE;
+    si.hStdOutput = out_write;
+    si.hStdError = out_write;
+    si.hStdInput = in_read;
+
+    if (!CreateProcess(
+        NULL,
+        (LPTSTR)cmd,
+        NULL,
+        NULL,
+        TRUE,   // inherit handles
+        CREATE_NO_WINDOW,
+        NULL,
+        NULL,
+        &si,
+        &pi
+    )) {
+        return -1;
+    }
+
+    write_handle = in_write;
+    read_handle = out_read;
+    proc_handle = pi.hProcess;
+    return 0;
+}
+
 int kill_process_with_status(int pid, int exit_code) {
     int retval;
 
@@ -376,8 +521,7 @@ double rand_normal() {
     return z*cos(PI2*u2);
 }
 
-// determines the real path and filename of the current process
-// not the current working directory
+// get the path of the calling process's executable
 //
 int get_real_executable_path(char* path, size_t max_len) {
 #if defined(__APPLE__)
@@ -501,7 +645,7 @@ bool process_exists(HANDLE h) {
     return false;
 }
 
-#else
+#else   // _WIN32
 
 // Unix: pthreads doesn't provide an API for getting per-thread CPU time,
 // so just get the process's CPU time
@@ -541,4 +685,148 @@ bool process_exists(int pid) {
     return true;
 }
 
+#endif  // _WIN32
+
+#ifndef _USING_FCGI_
+
+string parse_ldd_libc(const char* input) {
+    char *q = (char*)strchr(input, '\n');
+    if (q) *q = 0;
+    const char *p = strrchr(input, ' ');
+    if (!p) return "";
+    int maj, min;
+    if (sscanf(p, "%d.%d", &maj, &min) != 2) return "";
+    string s = (string)p;
+    strip_whitespace(s);
+    return s;
+}
+
+#ifdef _WIN32
+int DOCKER_CONN::init(DOCKER_TYPE docker_type, string distro_name, bool _verbose) {
+    string err_msg;
+    cli_prog = docker_cli_prog(docker_type);
+    if (docker_type == DOCKER) {
+        int retval = ctl_wc.setup(err_msg);
+        if (retval) return retval;
+        retval = ctl_wc.run_program_in_wsl(distro_name, "", true);
+        if (retval) return retval;
+    } else if (docker_type == PODMAN) {
+        int retval = ctl_wc.setup_root(distro_name.c_str());
+        if (retval) return retval;
+    } else {
+        return -1;
+    }
+    verbose = _verbose;
+    return 0;
+}
+#else
+int DOCKER_CONN::init(DOCKER_TYPE docker_type, bool _verbose) {
+    cli_prog = docker_cli_prog(docker_type);
+    verbose = _verbose;
+    return 0;
+}
 #endif
+
+int DOCKER_CONN::command(const char* cmd, vector<string> &out) {
+    char buf[1024];
+    int retval;
+    if (verbose) {
+        fprintf(stderr, "running docker command: %s\n", cmd);
+    }
+#ifdef _WIN32
+    string output;
+
+    sprintf(buf, "%s %s; echo EOM\n", cli_prog, cmd);
+    write_to_pipe(ctl_wc.in_write, buf);
+    retval = read_from_pipe(
+        ctl_wc.out_read, ctl_wc.proc_handle, output, TIMEOUT, "EOM"
+    );
+    if (retval) {
+        fprintf(stderr, "read_from_pipe() error: %s\n", boincerror(retval));
+        return retval;
+    }
+    out = split(output, '\n');
+#else
+    sprintf(buf, "%s %s\n", cli_prog, cmd);
+    retval = run_command(buf, out);
+    if (retval) {
+        if (verbose) {
+            fprintf(stderr, "command failed: %s\n", boincerror(retval));
+        }
+        return retval;
+    }
+#endif
+    if (verbose) {
+        fprintf(stderr, "command output:\n");
+        for (string line: out) {
+            fprintf(stderr, "%s\n", line.c_str());
+        }
+    }
+    return 0;
+}
+
+// REPOSITORY                          TAG         IMAGE ID      CREATED       SIZE
+// localhost/boinc__app_test__test_wu  latest      cbc1498dfc49  43 hours ago  121 MB
+
+int DOCKER_CONN::parse_image_name(string line, string &name) {
+    char buf[1024];
+    strcpy(buf, line.c_str());
+    if (strstr(buf, "REPOSITORY")) return -1;
+    if (strstr(buf, "localhost/") != buf) return -1;
+    char *p = buf + strlen("localhost/");
+    char *q = strstr(p, " ");
+    if (!q) return -1;
+    *q = 0;
+    name = (string)p;
+    return 0;
+}
+
+// CONTAINER ID  IMAGE                                      COMMAND               CREATED        STATUS                   PORTS       NAMES
+// 6d4877e0d071  localhost/boinc__app_test__test_wu:latest  /bin/sh -c ./work...  43 hours ago   Exited (0) 21 hours ago              boinc__app_test__test_result
+
+int DOCKER_CONN::parse_container_name(string line, string &name) {
+    char buf[1024];
+    strcpy(buf, line.c_str());
+    if (strstr(buf, "CONTAINER")) return -1;
+    char *p = strrchr(buf, ' ');
+    if (!p) return -1;
+    name = (string)(p+1);
+    return 0;
+}
+
+string docker_image_name(
+    const char* proj_url_esc, const char* wu_name
+) {
+    char buf[1024], url_buf[1024], wu_buf[1024];;
+
+    // Docker image names can't have upper case chars
+    //
+    safe_strcpy(url_buf, proj_url_esc);
+    downcase_string(url_buf);
+    safe_strcpy(wu_buf, wu_name);
+    downcase_string(wu_buf);
+
+    sprintf(buf, "boinc__%s__%s", url_buf, wu_buf);
+    return string(buf);
+}
+
+string docker_container_name(
+    const char* proj_url_esc, const char* result_name
+){
+    char buf[1024], url_buf[1024], result_buf[1024];;
+
+    // Docker image names can't have upper case chars
+    //
+    safe_strcpy(url_buf, proj_url_esc);
+    downcase_string(url_buf);
+    safe_strcpy(result_buf, result_name);
+    downcase_string(result_buf);
+
+    sprintf(buf, "boinc__%s__%s", url_buf, result_buf);
+    return string(buf);
+}
+
+bool docker_is_boinc_name(const char* name) {
+    return strstr(name, "boinc__") == name;
+}
+#endif  // _USING_FCGI

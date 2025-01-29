@@ -47,6 +47,7 @@ display_errors();
 
 //-------------- enable/disable web features
 
+define('UNIQUE_USER_NAME', true);
 define("FORUM_QA_MERGED_MODE", true);
     // Set to true to merge Message boards and Q&A section
 define ("DISABLE_PROFILES", true);
@@ -137,8 +138,8 @@ function project_footer($show_return, $show_date, $prefix) {
 }
 
 //-------------- Caching
-
-//define("MEMCACHE_SERVERS", "127.0.0.1:11211");
+// format: "host:port:weight"
+//define("MEMCACHE_SERVERS", "127.0.0.1:11211:50");
 
 //-------------- Ops access control
 

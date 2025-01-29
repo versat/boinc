@@ -339,9 +339,9 @@ void COPROC_NVIDIA::description(char* buf, int buflen) {
         safe_strcpy(cuda_vers, "unknown");
     }
     snprintf(buf, buflen,
-        "%s (driver version %s, CUDA version %s, compute capability %d.%d, %.0fMB, %.0fMB available, %.0f GFLOPS peak)",
+        "%s (driver version %s, CUDA version %s, compute capability %d.%d, %.2fGB, %.2fGB available, %.0f GFLOPS peak)",
         prop.name, vers, cuda_vers, prop.major, prop.minor,
-        prop.totalGlobalMem/MEGA, available_ram/MEGA, peak_flops/1e9
+        prop.totalGlobalMem/GIGA, available_ram/GIGA, peak_flops/1e9
     );
 }
 
@@ -852,9 +852,9 @@ int COPROC_ATI::parse(XML_PARSER& xp) {
 
 void COPROC_ATI::description(char* buf, int buflen) {
     snprintf(buf, buflen,
-        "%s (CAL version %s, %uMB, %.0fMB available, %.0f GFLOPS peak)",
-        name, version, attribs.localRAM,
-        available_ram/MEGA, peak_flops/1.e9
+        "%s (CAL version %s, %.2fGB, %.2fGB available, %.0f GFLOPS peak)",
+        name, version, attribs.localRAM/1024.,
+        available_ram/GIGA, peak_flops/1.e9
     );
 }
 
@@ -1119,16 +1119,31 @@ void COPROC_APPLE::fake(double ram, double avail_ram, int n) {
 
 ///////////////////// END GPU TYPES ///////////////
 
-// used wherever a processor type is specified in XML, e.g.
-// <coproc>
-//    <type>xxx</type>
+// processor types (CPU and GPUs) are (confusingly) identified in various ways:
 //
-// Don't confuse this with the element names used for GPUS within <coprocs>,
-// namely:
-// coproc_cuda
-// coproc_ati
-// coproc_intel_gpu
-// coproc_apple_gpu
+// - proc_type (int):
+//      PROC_TYPE_NVIDIA_GPU etc.
+//      The processor types known to BOINC.
+//      -1 if unknown (e.g. returned by OpenCL GPU enumeration)
+// - rsc_type (int):
+//      index into the coproc.coprocs[] array
+//      0 is always CPU
+// - name (char*)
+//      XML name (like intel_gpu)
+//      e.g. <coproc><type>intel_gpu</type>...</coproc>
+//      also COPROC.type (confusing)
+// - user friendly name (char*)
+//      user-facing, e.g. 'Intel GPU'
+// - element name (char*)
+//      e.g. <coproc_cuda>
+//      used in client_state.xml,
+//      and within <coproc> elements in sched requests
+
+// TODO: move rsc_name() etc from client_state.cpp;
+// make them members of COPROCS
+
+// proc_type to name
+// TODO: fix the function name
 //
 const char* proc_type_name_xml(int pt) {
     switch(pt) {
@@ -1141,6 +1156,9 @@ const char* proc_type_name_xml(int pt) {
     return "unknown";
 }
 
+// proc_type to user friendly name
+// TODO: fix the function name
+//
 const char* proc_type_name(int pt) {
     switch(pt) {
     case PROC_TYPE_CPU: return "CPU";
@@ -1152,7 +1170,11 @@ const char* proc_type_name(int pt) {
     return "unknown";
 }
 
+// name to proc_type
+// TODO: fix the function name
+//
 int coproc_type_name_to_num(const char* name) {
+    if (!strcmp(name, "CPU")) return PROC_TYPE_CPU;
     if (!strcmp(name, "CUDA")) return PROC_TYPE_NVIDIA_GPU;
     if (!strcmp(name, "NVIDIA")) return PROC_TYPE_NVIDIA_GPU;
     if (!strcmp(name, "ATI")) return PROC_TYPE_AMD_GPU;

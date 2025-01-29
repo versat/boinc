@@ -103,21 +103,16 @@ int CLIENT_STATE::make_project_dirs() {
 
     string name;
     char path[MAXPATHLEN];
-    DirScanner dir("projects");
+    DirScanner dir(PROJECTS_DIR);
     while (dir.scan(name)) {
+        if (name == "app_test") continue;
         snprintf(path, sizeof(path), "projects/%s", name.c_str());
         if (std::find(pds.begin(), pds.end(), path) != pds.end()) {
             continue;
         }
         msg_printf(0, MSG_INFO,
-            "%s is not a project dir - removing", path
+            "%s is not a project directory", path
         );
-        if (is_dir(path)) {
-            clean_out_dir(path);
-            boinc_rmdir(path);
-        } else {
-            boinc_delete_file(path);
-        }
     }
 
     return 0;
@@ -507,6 +502,7 @@ int FILE_INFO::check_size() {
     if (gstate.global_prefs.dont_verify_images && is_image_file(path)) {
         return 0;
     }
+    if (cc_config.dont_check_file_sizes) return 0;
     if (nbytes && (size != nbytes)) {
         delete_project_owned_file(path, true);
         status = FILE_NOT_PRESENT;
